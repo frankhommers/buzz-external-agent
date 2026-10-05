@@ -1,0 +1,9 @@
+/dist/
+/*.exe
+/buzz-external-agent
+/buzz-external-agent-host
+__pycache__/
+.DS_Store
+# Original machine-specific prototype; never publish it.
+/*.py
+/legacy/
