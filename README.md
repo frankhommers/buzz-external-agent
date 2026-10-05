@@ -7,6 +7,21 @@ A small standalone executable written in Go. No Python, Node.js, Go installation
 model provider, or API key is required to run a release binary. Available for
 macOS, Linux, and Windows, on ARM64 and x86-64.
 
+## Let an agent install it
+
+Give your coding or desktop agent this prompt, replacing the example names:
+
+```text
+Read https://github.com/frankhommers/buzz-external-agent/blob/main/AGENT-INSTALL.md
+and install/configure Buzz External Agent on the computer running Buzz Desktop
+for these existing agents: "My remote agent", "Another remote agent".
+Preserve their identities and keys. Local Start/Stop must never control the remote
+agents. Verify the installation and report the version, paths, and backup location.
+```
+
+The [agent installation guide](https://github.com/frankhommers/buzz-external-agent/blob/main/AGENT-INSTALL.md)
+includes platform selection, download verification, configuration, and completion checks.
+
 ## What it does
 
 Buzz normally starts an outer `buzz-acp` host, which launches an inner ACP agent.
