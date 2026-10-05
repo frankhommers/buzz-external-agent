@@ -62,7 +62,7 @@ func archive(path, binary string) error {
 	}
 	defer f.Close()
 	writer := zip.NewWriter(f)
-	for _, source := range []string{binary, "README.md", "LICENSE", "CHANGELOG.md"} {
+	for _, source := range []string{binary, "README.md", "LICENSE", "CHANGELOG.md", "AGENT-INSTALL.md"} {
 		data, err := os.ReadFile(source)
 		if err != nil {
 			writer.Close()

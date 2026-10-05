@@ -17,7 +17,7 @@ import (
 	"syscall"
 )
 
-const version = "0.1.0"
+const version = "0.1.1"
 const maxLine = 1 << 20
 
 var models = json.RawMessage(`{"currentModelId":"external","availableModels":[{"modelId":"external","name":"External — no local model","description":"Registration placeholder. The server agent runs independently."}]}`)

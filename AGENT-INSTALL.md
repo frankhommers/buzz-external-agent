@@ -121,7 +121,12 @@ or system-wide installation is required.
 
 The configure command validates the selected identities, backs up the original
 store, and updates the linked local records. Note its printed backup location.
-If it refuses an active runtime, shared persona, missing identity, or conflicting
+With 0.1.1 or later, saved runtime references are checked against the OS. References
+to exited processes are ignored with a diagnostic, without deleting or changing
+them. Both legacy `.pid` and pair-scoped JSON receipts are supported. Version
+0.1.0 blocked on file existence alone: upgrade and retry rather than deleting files.
+
+If it refuses an active/uncertain runtime, shared persona, missing identity, or conflicting
 store change, resolve that cause. Do not bypass the check by deleting receipts or
 manually forcing a new key into the store.
 

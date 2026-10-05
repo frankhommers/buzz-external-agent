@@ -113,6 +113,18 @@ Reopen Buzz. Local Start/Stop now controls only the placeholder. The status dot 
 reflects relay presence; starting the placeholder cannot make a remote agent online.
 The `external` model label does not describe the remote agent's actual model.
 
+### If configuration reports a local runtime receipt
+
+Version 0.1.0 refused any saved runtime receipt, even after its process exited.
+Upgrade to **0.1.1 or later**, keep Buzz closed, and retry `configure`. The new
+version checks the saved PIDs with the operating system. It ignores references
+only when the process has exited; the receipt files themselves remain unchanged.
+
+A live PID (including a reused PID), access denial, or an invalid/unreadable
+receipt still blocks configuration. The error identifies the PID/reference where
+possible. Investigate the owning local process; do not delete receipts, stop a
+remote service, or assume that no process named `buzz-acp` proves a PID is gone.
+
 For an existing remote identity missing from Buzz, restore its original identity
 first. Creating another agent with the same name produces a different key.
 This project does not recover keys or unarchive relay identities.

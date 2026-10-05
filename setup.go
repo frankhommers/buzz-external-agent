@@ -233,17 +233,8 @@ func configure(paths locations, names []string, out io.Writer) error {
 		if json.Unmarshal(agent["backend"], &backend) != nil || field(backend, "type") != "local" {
 			return errors.New("only local registrations are supported; remote deployments are never modified")
 		}
-		if pid := bytes.TrimSpace(agent["runtime_pid"]); len(pid) > 0 && string(pid) != "null" && string(pid) != "0" {
-			return errors.New("stop the local agent and close Buzz first; do not stop the VM service")
-		}
-		receipts, err := os.ReadDir(filepath.Join(paths.data, "agents", "agent-pids"))
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
+		if err := checkLocalRuntime(paths, agent, processRunning, out); err != nil {
 			return err
-		}
-		for _, receipt := range receipts {
-			if strings.Contains(receipt.Name(), field(agent, "pubkey")) {
-				return errors.New("local runtime receipt exists; stop the local agent and close Buzz first")
-			}
 		}
 		selected[index] = true
 		if persona := field(agent, "persona_id"); persona != "" {
