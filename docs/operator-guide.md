@@ -1,7 +1,8 @@
 # Operator guide
 
-You run the servers; owners ask for agents. Configure yourself as operator by giving owners
-your npub. Everything is in Settings → "Self-hosted agents: operator".
+You run the servers; owners ask for agents. Give owners your npub, and paste your own npub
+as Operator in Settings → Self-hosted agents to see the operator view. Everything is in
+Settings → "Self-hosted agents: operator".
 
 ## Offer a server
 

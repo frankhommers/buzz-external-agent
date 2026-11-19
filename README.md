@@ -34,6 +34,8 @@ Or build it: `bun install && bun run build`, then add `dist/plugin`.
 ## Roles and flows
 
 - **Setup**: the owner opens Settings → Self-hosted agents and pastes the operator's npub.
+  The operator pastes their own npub as Operator in Settings → Self-hosted agents to see the
+  operator view.
 - **Offer**: the operator adds a server (slot id, label, SSH host public key) and offers
   it to an owner. The owner sees it under "Servers offered to you".
 - **Create** (owner): New agent, type **Self-hosted agent**, choose an offered server. The
@@ -75,8 +77,11 @@ no message is sent to yourself.
 - Adopting, retiring and deleting are implemented, but not yet verified against a live Buzz.
 - No rename or avatar change from Buzz; change them on the server.
 - **Retire before Delete.** Buzz archives an agent before it asks the plugin to remove it.
-  Delete only succeeds after the operator confirmed retirement. An agent whose setup never
-  reached the operator can be deleted directly.
+  Delete only succeeds after the operator confirmed retirement, with the agent's community
+  selected in Buzz. The one exception: an unfinished setup made on this device whose install
+  request was never sent can be deleted directly. Once sending was attempted, even if it
+  failed, the agent must be retired first; agents brought into Buzz or set up on another
+  device too.
 - Hosted agents always appear online in Buzz. Use the **Server** tab for the real status.
 - No remote start or stop.
 

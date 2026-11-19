@@ -41,8 +41,14 @@ Hosted agents always look online in Buzz, so use the **Server** tab for the real
 2. When the tab says "Stopped by the operator, you can delete it now", delete the agent.
 
 Deleting first fails with "Retire this agent first, then delete it again": Buzz has already
-archived the agent, so retire, wait, then delete again. Exception: an agent whose setup never
-reached the operator can be deleted directly.
+archived the agent, so retire, wait, then delete again. Exception: an unfinished setup made
+on this device whose install request was never sent can be deleted directly (it is not
+offered Retire). Once sending was attempted, even if it failed, retire it first; the same
+holds for agents brought into Buzz or set up on another device. Delete with the agent's
+community selected in Buzz.
+
+Changed your mind while the operator has not confirmed yet? **Cancel retire request** sets
+the agent back to its earlier status on this device.
 
 ## Limits
 
