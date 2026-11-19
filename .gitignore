@@ -9,4 +9,3 @@ __pycache__/
 /legacy/
 .superpowers/
 node_modules/
-dist/

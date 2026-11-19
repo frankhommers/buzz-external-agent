@@ -24,8 +24,9 @@ if (result.outputs.length !== 1 || !output) {
 }
 
 const code = await output.text()
-if (/^\s*import\s/m.test(code) || /\bimport\s*\(/.test(code)) {
-  console.error('plugin.js must be self-contained: import statement found')
+const REEXPORT_PATTERN = /^\s*export\s[^;]*\sfrom\s/m
+if (/^\s*import\s/m.test(code) || /\bimport\s*\(/.test(code) || REEXPORT_PATTERN.test(code)) {
+  console.error('plugin.js must be self-contained: import or re-export found')
   process.exit(1)
 }
 

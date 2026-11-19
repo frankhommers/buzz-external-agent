@@ -41,6 +41,7 @@ describe('plugin build', () => {
     const source = readFileSync(resolve(pluginDir, 'plugin.js'), 'utf8')
     expect(source).not.toMatch(/^\s*import\s/m)
     expect(source).not.toMatch(/\bimport\s*\(/)
+    expect(source).not.toMatch(/^\s*export\s[^;]*\sfrom\s/m)
   })
 
   test('plugin.js exports inject and apply', async () => {
