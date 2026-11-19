@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.9.0-beta.1
+
+Pre-release. A TypeScript plugin for Buzz Desktop 1.0.5 replaces the Go placeholder, which
+only worked with old Buzz (last Go release: tag `v0.1.1`, see the GitHub releases page).
+
+- Self-hosted agent type with owner and operator roles, Buzz DM protocol, age-sealed keys.
+- Bring existing agents into Buzz, retire (also adopted agents) and delete.
+- Operator view with Known owners and a shell-quoting command template.
+- Generic reference installer, shellchecked and tested under `dash`.
+- Release workflow: `selfhosted-agents-<version>.zip` and `SHA256SUMS`.
+- Known limitation: publishing a new agent's profile is a stub, so creating new agents does
+  not work end to end yet; adopting, retiring and deleting are not yet verified live.
+
 ## 0.1.1
 
 - Allow configuration when the OS confirms that a saved local PID has exited,

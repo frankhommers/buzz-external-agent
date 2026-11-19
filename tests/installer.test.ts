@@ -14,6 +14,8 @@ import { join } from 'node:path'
 import { encodeNsec, generateSecretKey, publicKeyHex } from '../src/core/keys'
 import { parseHostKey, sealSecret } from '../src/core/seal'
 
+// Set INSTALLER_SHELL=dash to check the installer under a strict POSIX shell.
+const SHELL = process.env.INSTALLER_SHELL ?? 'sh'
 const SCRIPT = join(import.meta.dir, '..', 'installer', 'install-agent-key.sh')
 const RELAY = 'wss://relay.example.test'
 const OWNER = 'a'.repeat(64)
@@ -24,7 +26,7 @@ const OLD_ENV = ['# agent env', 'FOO=bar', "BUZZ_RELAY_URL='old'", 'BUZZ_PRIVATE
 
 // Skip with a printed reason when a tool is missing locally; fail in CI.
 const requireTools = (): boolean => {
-  const missing = ['age', 'jq', 'ssh-keygen', 'sh'].filter((name) => Bun.which(name) === null)
+  const missing = ['age', 'jq', 'ssh-keygen', SHELL].filter((name) => Bun.which(name) === null)
   if (missing.length === 0) return true
   const message = `required tool(s) not on PATH: ${missing.join(', ')}`
   if (process.env.CI) throw new Error(message)
@@ -90,7 +92,7 @@ const setup = async (dir: string, withEnv: boolean): Promise<Fixture> => {
   const run: Fixture['run'] = (overrides = {}) => {
     const buzz = fakeBuzz(overrides.buzzPubkey ?? pubkey)
     const result = Bun.spawnSync([
-      'sh',
+      SHELL,
       SCRIPT,
       '--sealed',
       overrides.sealed ?? sealed,
