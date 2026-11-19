@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { ed25519 } from '@noble/curves/ed25519.js'
 import { generateSecretKey, publicKeyHex } from '../../src/core/keys'
 import { acceptBlock, type Block, encodeBlock, parseBlocks } from '../../src/core/messages'
 import { signNipOaForTests } from '../helpers/nipoa'
@@ -8,12 +9,26 @@ const owner = publicKeyHex(generateSecretKey())
 const agent = publicKeyHex(generateSecretKey())
 const ARMOR = '-----BEGIN AGE ENCRYPTED FILE-----\nabc\n-----END AGE ENCRYPTED FILE-----'
 
+const HOST_KEY = (() => {
+  const part = (b: Uint8Array): Uint8Array => {
+    const out = new Uint8Array(4 + b.length)
+    new DataView(out.buffer).setUint32(0, b.length)
+    out.set(b, 4)
+    return out
+  }
+  const blob = new Uint8Array([
+    ...part(new TextEncoder().encode('ssh-ed25519')),
+    ...part(ed25519.getPublicKey(new Uint8Array(32).fill(7))),
+  ])
+  return `ssh-ed25519 ${Buffer.from(blob).toString('base64')}`
+})()
+
 const offer: Block = {
   v: 1,
   type: 'slot-offer',
   slot: 'vps-1',
   label: 'My VPS',
-  hostKey: 'ssh-ed25519 AAAA',
+  hostKey: HOST_KEY,
   community: 'wss://relay.example.com',
 }
 const install: Block = {
@@ -71,6 +86,11 @@ describe('encode/parse', () => {
       { ...install, sealed: 'not armored' },
       { ...install, sealed: `${ARMOR}${'a'.repeat(5000)}` },
       { ...install, name: '' },
+      { ...install, name: 'a\nb' },
+      { ...install, name: 'a\u0007b' },
+      { ...offer, hostKey: 'ssh-rsa AAAA' },
+      { ...offer, hostKey: 'ssh-ed25519 AAAA' },
+      { ...offer, hostKey: `${HOST_KEY}${' '.repeat(600)}` },
       { ...install, auth: ['auth', 'x', '', 'y'] },
       { ...retired, pubkey: 'zz' },
     ]
