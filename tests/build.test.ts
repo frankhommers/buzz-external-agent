@@ -55,3 +55,13 @@ describe('plugin build', () => {
     expect(typeof mod.apply).toBe('function')
   })
 })
+
+describe('CI workflow', () => {
+  test('the release job checks out without persisting the token', () => {
+    const workflow = readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8')
+    const release = workflow.slice(workflow.indexOf('\n  release:'))
+    expect(release).toMatch(
+      /uses: actions\/checkout@\S+[^\n]*\n\s+with:\n\s+persist-credentials: false\n/,
+    )
+  })
+})
