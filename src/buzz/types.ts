@@ -88,10 +88,19 @@ export interface AgentsSnapshot {
   agents: readonly { pubkey: string; place: 'here' | 'hosted' | 'elsewhere' }[]
 }
 
-/** features/agents/service.ts:1412,1514 (Agents.snapshot). */
+/** features/agents/service.ts:1412,1514 (Agents.snapshot) and :3042 (Agents.register). */
 export interface AgentsService {
   snapshot(): AgentsSnapshot
+  register<Config>(type: AgentType<Config>): void
 }
+
+/** features/host/service.ts:92-97 (NipOaAuthorization). */
+export type NipOaAuthorization = readonly [
+  'auth',
+  ownerPubkey: string,
+  conditions: string,
+  signature: string,
+]
 
 /** features/host/service.ts:280-283, :292 (prepareRemoteAgentAuthorization -> ['auth', owner, '', sig]). */
 export interface Host {
@@ -101,8 +110,66 @@ export interface Host {
   ): Promise<readonly string[]>
 }
 
+/** features/agents/service.ts:250-293 (Agent), reduced to the members this plugin reads. */
+export type Agent<Config = unknown> = Readonly<{
+  pubkey: string
+  name: string
+  picture?: string
+  type: string
+  owner: string
+  relay: string
+  place: 'here' | 'hosted' | 'elsewhere'
+  config: Config
+}>
+
+/** features/agents/service.ts:1123-1196 (RemoteAgentType), without the optional interrupt/instructions. */
+export type RemoteAgentType = Readonly<{
+  provision(
+    input: Readonly<{
+      name: string
+      picture?: string
+      community: string
+      config?: unknown
+      signal: AbortSignal
+    }>,
+  ): Promise<Readonly<{ pubkey: string; picture?: string }>>
+  activate(
+    input: Readonly<{
+      pubkey: string
+      name: string
+      community: string
+      auth: NipOaAuthorization
+      config?: unknown
+      signal: AbortSignal
+    }>,
+  ): Promise<void>
+  profile(
+    input: Readonly<{
+      pubkey: string
+      community: string
+      name: string
+      picture?: string
+      signal: AbortSignal
+    }>,
+  ): Promise<void>
+  remove(input: Readonly<{ pubkey: string; community: string; signal: AbortSignal }>): Promise<void>
+}>
+
+/**
+ * features/agents/service.ts:932-1118 (AgentType), reduced to the members this plugin sets.
+ * A remote type must not set run, models or timeoutMs (service.ts:3042-3073, Agents.register).
+ */
+export type AgentType<Config = unknown> = {
+  id: string
+  title: string
+  description?: string
+  defaults(): Readonly<{ config: Config }>
+  summary?(agent: Agent<Config>): string
+  remote?: RemoteAgentType
+}
+
 /** The slice of the plugin ctx the relay adapter touches (inject: relay, agents). */
 export interface RelayCtx {
   relay: RelayData
-  agents: AgentsService
+  agents: Pick<AgentsService, 'snapshot'>
 }
