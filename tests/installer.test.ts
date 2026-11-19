@@ -221,12 +221,7 @@ describe('install-agent-key.sh', () => {
     [
       'auth tag with trailing newline in owner',
       {
-        authTag: JSON.stringify([
-          'auth',
-          `${OWNER}\n`,
-          'kind=9',
-          SIG,
-        ]),
+        authTag: JSON.stringify(['auth', `${OWNER}\n`, 'kind=9', SIG]),
       },
     ],
     [
