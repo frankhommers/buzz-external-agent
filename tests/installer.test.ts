@@ -217,6 +217,26 @@ describe('install-agent-key.sh', () => {
 
   test.each([
     ['relay with quote', { relay: "wss://a.test'x" }],
+    ['relay with trailing newline', { relay: 'wss://a.test\n' }],
+    [
+      'auth tag with trailing newline in owner',
+      {
+        authTag: JSON.stringify([
+          'auth',
+          `${OWNER}\n`,
+          'kind=9',
+          SIG,
+        ]),
+      },
+    ],
+    [
+      'auth tag with trailing newline in sig',
+      { authTag: JSON.stringify(['auth', OWNER, 'kind=9', `${SIG}\n`]) },
+    ],
+    [
+      'auth tag with trailing newline in condition',
+      { authTag: JSON.stringify(['auth', OWNER, 'kind=9\n', SIG]) },
+    ],
     ['relay with newline', { relay: 'wss://a.test\nX=1' }],
     ['relay with command substitution', { relay: 'wss://a.test/$(id)' }],
     ['relay with backtick', { relay: 'wss://a.test/`id`' }],

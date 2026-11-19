@@ -77,20 +77,24 @@ is_hex()
 is_hex "$PUBKEY" 64 || fail "pubkey must be 64 lowercase hex characters"
 
 # Relay: strict ws(s) URL; written single-quoted later.
-printf '%s' "$RELAY" | jq -Rse 'test("^wss?://[A-Za-z0-9.-]+(:[0-9]+)?(/[A-Za-z0-9._~/%-]*)?$")' \
+case "$RELAY" in
+  *'
+'*) fail "relay must be a plain ws:// or wss:// url" ;;
+esac
+printf '%s' "$RELAY" | jq -Rse 'test("\\Awss?://[A-Za-z0-9.-]+(:[0-9]+)?(/[A-Za-z0-9._~/%-]*)?\\z")' \
   >/dev/null 2>&1 || fail "relay must be a plain ws:// or wss:// url"
 
 # Auth tag: exactly one JSON document of the NIP-OA shape with canonical conditions.
 printf '%s' "$AUTH_TAG" | jq -s -e 'length == 1' >/dev/null 2>&1 || fail "auth tag must be one JSON document"
 AUTH_TAG=$(printf '%s' "$AUTH_TAG" | jq -ce '
-  def clause: (test("^kind=(0|[1-9][0-9]{0,4})$") and (.[5:] | tonumber <= 65535))
-    or (test("^created_at[<>](0|[1-9][0-9]{0,9})$") and (.[11:] | tonumber <= 4294967295));
+  def clause: (test("\\Akind=(0|[1-9][0-9]{0,4})\\z") and (.[5:] | tonumber <= 65535))
+    or (test("\\Acreated_at[<>](0|[1-9][0-9]{0,9})\\z") and (.[11:] | tonumber <= 4294967295));
   select(
     type == "array" and length == 4 and all(.[]; type == "string")
     and .[0] == "auth"
-    and (.[1] | test("^[0-9a-f]{64}$"))
+    and (.[1] | test("\\A[0-9a-f]{64}\\z"))
     and (.[2] == "" or (.[2] | split("&") | all(.[]; clause)))
-    and (.[3] | test("^[0-9a-f]{128}$"))
+    and (.[3] | test("\\A[0-9a-f]{128}\\z"))
   )' 2>/dev/null) || fail "auth tag is not a valid NIP-OA auth tag"
 [ -n "$AUTH_TAG" ] || fail "auth tag is not a valid NIP-OA auth tag"
 # The value is embedded in single quotes: it must be a single line free of quotes.
