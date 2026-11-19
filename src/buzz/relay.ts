@@ -151,9 +151,11 @@ export const createRelay = (ctx: RelayCtx): Relay => {
 
     readProfile: async (pubkey) => {
       const { session } = live()
-      const events = await session.read([
-        { kinds: [PROFILE_KIND], authors: [pubkey], limit: PROFILE_LIMIT },
-      ])
+      // Fresh: a read joined from before a publish could report the profile absent.
+      const events = await session.read(
+        [{ kinds: [PROFILE_KIND], authors: [pubkey], limit: PROFILE_LIMIT }],
+        { fresh: true, priority: 'foreground' },
+      )
       let head: VisibleEvent | undefined
       for (const event of events)
         if (event.kind === PROFILE_KIND && event.pubkey === pubkey && isNewer(event, head))

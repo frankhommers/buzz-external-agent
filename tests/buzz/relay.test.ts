@@ -140,6 +140,12 @@ describe('readProfile', () => {
     expect(await createRelay(ctx).readProfile(pubkey)).toBeUndefined()
   })
 
+  test('reads fresh, in the foreground, so a read from before a publish is not joined', async () => {
+    const fake = fakeCtx({ events: [profile(10)] })
+    await createRelay(fake.ctx).readProfile(pubkey)
+    expect(fake.readSettings).toEqual([{ fresh: true, priority: 'foreground' }])
+  })
+
   test('undefined when none, or unsigned', async () => {
     const { sig: _sig, ...unsigned } = profile(10)
     const { ctx } = fakeCtx({ events: [unsigned] })
