@@ -42,8 +42,7 @@ const PROFILE_HELD = "Change the name or avatar on the server; this agent's key 
 const RETIRE_FIRST = 'Retire this agent first, then delete it again'
 const OTHER_COMMUNITY = "Switch to this agent's community in Buzz, then try again"
 const RETIRING = 'This agent is retired or being retired; it cannot be installed again'
-const NOT_PUBLISHED =
-  'The agent profile could not be published; remove this unfinished agent and try again'
+const NOT_PUBLISHED = 'The agent profile could not be published; retire this agent and try again'
 
 const operatorOf = (store: Store): string => {
   const operator = store.settings().operator?.trim()

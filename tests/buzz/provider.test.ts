@@ -344,7 +344,7 @@ describe('provision', () => {
 
     delete options.publishError
     await expect(provider.provision(provisionInput())).rejects.toThrow(
-      'The agent profile could not be published; remove this unfinished agent and try again',
+      'The agent profile could not be published; retire this agent and try again',
     )
     expect(authCalls).toHaveLength(1)
     expect(agentPublishes).toHaveLength(1)
