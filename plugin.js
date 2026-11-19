@@ -10762,7 +10762,7 @@ var OperatorPanel = (react, props) => {
   const ownersSection = h("div", { style: SECTION }, heading("Known owners"), hint("Owners whose existing agents you run. Their messages are read even without a server " + "offered here, so they can ask you to retire an agent. One npub per line."), area("owners", "Known owners", "npub1…", view.owners.join(`
 `)), actions(button("Save owners", () => props.onSaveOwners(draft("owners", view.owners.join(`
 `))))));
-  const templateSection = h("div", { style: SECTION }, heading("Command template"), hint(TEMPLATE_HELP), area("template", "Command template", "ansible-playbook deploy.yml -e host={host}", view.template), actions(button("Save template", () => props.onSaveTemplate(draft("template", view.template)))));
+  const templateSection = h("div", { style: SECTION }, heading("Command template"), hint(TEMPLATE_HELP), area("template", "Command template", "./deploy-agent {host} {file} {pubkey}", view.template), actions(button("Save template", () => props.onSaveTemplate(draft("template", view.template)))));
   return h("section", { className: "ui-card", style: CARD }, props.notice.text === "" ? null : h("p", noticeProps(props.notice), props.notice.text), slotsSection, addSection, importSection, installsSection, retiresSection, ownersSection, templateSection);
 };
 var downloadFile = (filename, text, env = globalThis) => {
@@ -11119,7 +11119,7 @@ var statusTab = (deps) => {
 };
 
 // src/plugin.ts
-var OPERATOR_CARD_TITLE = "Self-hosted agents — operator";
+var OPERATOR_CARD_TITLE = "Agent servers";
 var inject = ["react", "agents", "relay", "host", "settingsCards"];
 function apply(ctx) {
   const relay = createRelay(ctx);
