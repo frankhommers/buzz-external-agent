@@ -30,6 +30,12 @@ const decodeBlob = (encoded: string): Uint8Array => {
     KEY_TYPE_BYTES.every((byte, index) => blob[4 + index] === byte) &&
     view.getUint32(4 + KEY_TYPE_BYTES.length) === 32
   if (!isValid) throw new Error('Not a valid SSH public key')
+  try {
+    // Rejects non-canonical, off-curve and identity points.
+    ed25519.utils.toMontgomery(blob.slice(BLOB_LENGTH - 32))
+  } catch {
+    throw new Error('Not a valid SSH public key')
+  }
   return blob
 }
 
