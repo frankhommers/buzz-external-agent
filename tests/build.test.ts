@@ -5,7 +5,7 @@ import { PLUGIN_ID } from '../src/constants'
 
 const root = resolve(import.meta.dir, '..')
 const pluginDir = resolve(root, 'dist/plugin')
-const ALLOWED_KEYS = ['id', 'name', 'apiVersion', 'description', 'discovery', 'host']
+const ALLOWED_KEYS = ['id', 'name', 'apiVersion', 'description', 'updates', 'discovery', 'host']
 
 describe('plugin build', () => {
   beforeAll(async () => {
@@ -35,6 +35,12 @@ describe('plugin build', () => {
     expect(manifest.id).toBe(PLUGIN_ID)
     expect(Buffer.byteLength(manifest.description, 'utf8')).toBeLessThanOrEqual(280)
     expect(Buffer.byteLength(manifest.description, 'utf8')).toBeGreaterThan(0)
+  })
+
+  test('manifest opts in to Git update checks', () => {
+    // Buzz checks a Git-installed plugin for updates only when the manifest declares it.
+    const manifest = JSON.parse(readFileSync(resolve(root, 'manifest.json'), 'utf8'))
+    expect(manifest.updates).toEqual({ defaultEnabled: true })
   })
 
   test('plugin.js has no import statements', () => {
