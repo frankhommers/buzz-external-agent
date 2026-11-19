@@ -22,7 +22,7 @@ export interface PluginCtx {
   effect(start: () => (() => void) | undefined): () => void
 }
 
-const OPERATOR_CARD_TITLE = 'Self-hosted agents — operator'
+const OPERATOR_CARD_TITLE = 'Agent servers'
 
 export const inject: readonly string[] = ['react', 'agents', 'relay', 'host', 'settingsCards']
 

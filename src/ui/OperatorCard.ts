@@ -298,12 +298,7 @@ export const OperatorPanel = (react: ReactLike, props: OperatorPanelProps): unkn
     { style: SECTION },
     heading('Command template'),
     hint(TEMPLATE_HELP),
-    area(
-      'template',
-      'Command template',
-      'ansible-playbook deploy.yml -e host={host}',
-      view.template,
-    ),
+    area('template', 'Command template', './deploy-agent {host} {file} {pubkey}', view.template),
     actions(button('Save template', () => props.onSaveTemplate(draft('template', view.template)))),
   )
 

@@ -62,7 +62,7 @@ test('apply registers the owner and operator settings cards', () => {
   apply(value)
   expect(cards.map((card) => card.id)).toEqual(['owner', 'operator'])
   expect(cards[0]).toMatchObject({ title: 'Self-hosted agents' })
-  expect(cards[1]).toMatchObject({ title: 'Self-hosted agents — operator' })
+  expect(cards[1]).toMatchObject({ title: 'Agent servers' })
   for (const card of cards) expect(typeof card.component).toBe('function')
   expect(cards[0]?.visibility).toBeUndefined()
 })

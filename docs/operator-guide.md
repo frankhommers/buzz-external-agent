@@ -3,7 +3,7 @@
 You run the servers; owners ask for agents. Give owners your npub.
 
 Paste your own npub as Operator in Settings → Self-hosted agents to get the operator view.
-It is Settings → "Self-hosted agents — operator", listed only while you are the operator
+It is Settings → **Agent servers**, listed only while you are the operator
 set for the selected community.
 
 ## Offer a server
@@ -41,7 +41,7 @@ URL (`wss://…`) the agent connects to. The public data also includes `relay`.
 **Do not put quotes around placeholders; values are shell-quoted automatically.**
 
 ```text
-ansible-playbook install-agent.yml -l {host} -e agent_name={name} -e sealed_file={file}
+./deploy-agent {host} {file} {pubkey} {auth_tag}
 ```
 
 An unknown placeholder is shown as an error on the request instead of a command.

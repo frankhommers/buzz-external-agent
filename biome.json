@@ -1,6 +1,6 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.6.8/schema.json",
-  "files": { "includes": ["**", "!dist", "!node_modules", "!.superpowers", "!docs/superpowers"] },
+  "files": { "includes": ["**", "!dist", "!node_modules", "!.superpowers"] },
   "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },
   "javascript": {
     "formatter": { "quoteStyle": "single", "semicolons": "asNeeded", "trailingCommas": "all" }
