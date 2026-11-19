@@ -1,5 +1,5 @@
 import { TYPE_ID } from '../constants'
-import { buildAgentProfile } from '../core/events'
+import { buildAgentProfile, verifyEvent } from '../core/events'
 import { decodeNpub, generateSecretKey, isHex64, publicKeyHex } from '../core/keys'
 import type { InstallRequest } from '../core/messages'
 import { type NipOaTag, parseNipOaTag, verifyNipOa } from '../core/nipoa'
@@ -123,12 +123,15 @@ export const createProvider = (deps: ProviderDeps): RemoteAgentType => {
         if (status !== undefined && status !== 'awaiting-install') throw new Error(SLOT_IN_USE)
         // A retry: the key was dropped after the first attempt, so the profile cannot be
         // published again as the agent. It counts only if that attempt reached the relay.
-        if ((await deps.relay.readProfile(existing.pubkey)) === undefined) {
-          throw new Error(NOT_PUBLISHED)
+        const profile = await deps.relay.readProfile(existing.pubkey)
+        if (profile !== undefined && profile.pubkey === existing.pubkey && verifyEvent(profile)) {
+          return resultOf(existing)
         }
-        return resultOf(existing)
+        if (status !== undefined) throw new Error(NOT_PUBLISHED)
       }
       if (!isValidName(name)) throw new Error(BAD_NAME)
+      // Never published nor sent: only its local ciphertext existed, so start over with a new key.
+      if (existing !== undefined) store.deletePending(existing.pubkey)
 
       signal.throwIfAborted()
       const secret = generateSecretKey()

@@ -69,6 +69,8 @@ afterEach(() => {
 
 const owner = generateSecretKey()
 
+const NOW_MS = 1_800_000_123_456
+
 const fixture = (overrides: { timeoutMs?: number; signal?: AbortSignal } = {}) => {
   const secret = generateSecretKey()
   const pubkey = publicKeyHex(secret)
@@ -80,6 +82,7 @@ const fixture = (overrides: { timeoutMs?: number; signal?: AbortSignal } = {}) =
     auth,
     event,
     WebSocketImpl: FakeSocket as unknown as typeof WebSocket,
+    now: () => NOW_MS,
     ...overrides,
   })
   // Observed so a rejection the test has not awaited yet is not reported as unhandled.
@@ -108,7 +111,7 @@ describe('publishAsAgent', () => {
     expect(authEvent.pubkey).toBe(pubkey)
     expect(authEvent.tags).toEqual([['relay', RELAY], ['challenge', 'challenge-1'], [...auth]])
     expect(verifyEvent(authEvent)).toBe(true)
-    expect(Math.abs(authEvent.created_at - Date.now() / 1000)).toBeLessThan(60)
+    expect(authEvent.created_at).toBe(Math.floor(NOW_MS / 1000))
     expect(socket().sent).toHaveLength(1)
 
     socket().frame(['OK', 'f'.repeat(64), true, ''])

@@ -14,6 +14,8 @@ export interface PublishAsAgentInput {
   WebSocketImpl?: typeof WebSocket
   /** Overall deadline in milliseconds. */
   timeoutMs?: number
+  /** Wall-clock Unix milliseconds, for the sign-in event's `created_at`. */
+  now?: () => number
 }
 
 const DEADLINE_MS = 20_000
@@ -91,7 +93,7 @@ export const publishAsAgent = (input: PublishAsAgentInput): Promise<void> =>
       const [type, first, accepted, text] = frame
       if (phase === 'challenge') {
         if (type !== 'AUTH' || typeof first !== 'string') return
-        const createdAt = Math.floor(Date.now() / MS_PER_SECOND)
+        const createdAt = Math.floor((input.now ?? Date.now)() / MS_PER_SECOND)
         const authEvent = buildAuthEvent(secret, relay, first, auth, createdAt)
         authId = authEvent.id
         enter('auth')

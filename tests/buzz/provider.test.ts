@@ -46,6 +46,7 @@ interface Options {
   ownerSecret?: Uint8Array
   hostOwnerSecret?: Uint8Array
   publishError?: Error
+  readError?: Error
   sendError?: Error
   /** The viewer is also the configured operator, with vps-1 offered to self. */
   operatorIsViewer?: boolean
@@ -90,7 +91,10 @@ const setup = (options: Options = {}) => {
   const relay: Relay = {
     ready: async () => ({ origin: ORIGIN, viewer, community: COMMUNITY }),
     readOwnRecords: async () => ({ ok: true, records: new Map() }),
-    readProfile: async (pubkey) => published.find((event) => event.pubkey === pubkey),
+    readProfile: async (pubkey) => {
+      if (options.readError) throw options.readError
+      return published.find((event) => event.pubkey === pubkey)
+    },
     publishRecord: async () => {},
     sendBlock: async (to, block) => {
       if (options.sendError) throw options.sendError
@@ -292,13 +296,51 @@ describe('provision', () => {
     expect(store.pending()).toHaveLength(0)
   })
 
-  test('keeps the sealed setup when publishing fails; a retry cannot republish it', async () => {
-    const options: Options = { publishError: new Error('relay refused') }
-    const { provider, store, published, authCalls, agentPublishes } = setup(options)
+  test('keeps the sealed setup when publishing fails', async () => {
+    const { provider, store, published } = setup({ publishError: new Error('relay refused') })
     await expect(provider.provision(provisionInput())).rejects.toThrow('relay refused')
     const pending = store.pendingFor('vps-1')
     expect(pending?.sealed.startsWith('-----BEGIN AGE ENCRYPTED FILE-----')).toBe(true)
     expect(published).toHaveLength(0)
+  })
+
+  test('a retry of an unsent setup whose profile is absent starts over with a new key', async () => {
+    const options: Options = { publishError: new Error('relay refused') }
+    const { provider, store, published, authCalls, agentPublishes } = setup(options)
+    await expect(provider.provision(provisionInput())).rejects.toThrow('relay refused')
+    const old = store.pendingFor('vps-1')
+    if (old === undefined) throw new Error('missing pending setup')
+
+    delete options.publishError
+    const result = await provider.provision(provisionInput())
+    expect(result.pubkey).not.toBe(old.pubkey)
+    expect(authCalls).toEqual([old.pubkey, result.pubkey])
+    expect(agentPublishes).toHaveLength(2)
+    expect(published.map((event) => event.pubkey)).toEqual([result.pubkey])
+    expect(store.pending().map((p) => p.pubkey)).toEqual([result.pubkey])
+  })
+
+  test('a retry of an unsent setup whose relay profile does not verify starts over', async () => {
+    const options: Options = { publishError: new Error('relay refused') }
+    const { provider, store, published } = setup(options)
+    await expect(provider.provision(provisionInput())).rejects.toThrow('relay refused')
+    const old = store.pendingFor('vps-1')
+    if (old === undefined) throw new Error('missing pending setup')
+    published.push({ ...old.profile, content: '{"name":"Forged"}' })
+
+    delete options.publishError
+    const result = await provider.provision(provisionInput())
+    expect(result.pubkey).not.toBe(old.pubkey)
+    expect(store.pending().map((p) => p.pubkey)).toEqual([result.pubkey])
+  })
+
+  test('a retry of a sent setup whose profile is absent throws without a new key', async () => {
+    const options: Options = { publishError: new Error('relay refused') }
+    const { provider, store, authCalls, agentPublishes } = setup(options)
+    await expect(provider.provision(provisionInput())).rejects.toThrow('relay refused')
+    const pending = store.pendingFor('vps-1')
+    if (pending === undefined) throw new Error('missing pending setup')
+    store.setStatus(pending.pubkey, 'awaiting-install')
 
     delete options.publishError
     await expect(provider.provision(provisionInput())).rejects.toThrow(
@@ -306,6 +348,21 @@ describe('provision', () => {
     )
     expect(authCalls).toHaveLength(1)
     expect(agentPublishes).toHaveLength(1)
+    expect(store.pendingFor('vps-1')).toEqual(pending)
+  })
+
+  test('a retry whose profile read fails throws and keeps the pending setup', async () => {
+    const options: Options = { publishError: new Error('relay refused') }
+    const { provider, store, authCalls } = setup(options)
+    await expect(provider.provision(provisionInput())).rejects.toThrow('relay refused')
+    const pending = store.pendingFor('vps-1')
+
+    delete options.publishError
+    options.readError = new Error('Not connected to a community yet')
+    await expect(provider.provision(provisionInput())).rejects.toThrow(
+      'Not connected to a community yet',
+    )
+    expect(authCalls).toHaveLength(1)
     expect(store.pendingFor('vps-1')).toEqual(pending)
   })
 
