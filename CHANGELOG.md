@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.1
+
+- Install from GitHub: in Buzz, add repository `frankhommers/buzz-external-agent` with branch
+  `release`. That branch holds only the built plugin of the latest stable version, and the
+  manifest opts in to Buzz's update checks, so Buzz offers **Update and reload** for new
+  versions instead of a delete and re-add.
+- No functional changes.
+
 ## 1.0.0
 
 First stable release, for Buzz Desktop 1.0.5 and newer.

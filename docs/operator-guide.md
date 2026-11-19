@@ -68,4 +68,4 @@ Offers, requests and confirmations are handled locally; no DM to yourself.
 
 DMs are not end-to-end encrypted and carry only public data and age ciphertext. The plugin
 never contacts servers. Verified on Buzz Desktop 1.0.5 (Linux) against a test relay.
-Updating the plugin on Buzz 1.0.5 means deleting it and adding the new version.
+Install the plugin from Git (repository `frankhommers/buzz-external-agent`, branch `release`) so Buzz updates it in place; a folder install must be deleted and added again.

@@ -58,6 +58,6 @@ If Delete is refused right after Retired while Buzz is reconnecting, try Delete 
 - Hosted agents always look online in Buzz; the Server tab has the real status.
 - Retire before Delete (see above).
 - No rename or avatar change from Buzz; change them on the server.
-- Updating the plugin on Buzz 1.0.5: delete it and add the new version (no reload button).
+- Install the plugin from Git (repository `frankhommers/buzz-external-agent`, branch `release`): Buzz then offers updates itself. A folder (zip) install must be deleted and added again to update.
 - DMs with the operator are not end-to-end encrypted. Only public data and sealed
   ciphertext travel in them.

@@ -24,10 +24,16 @@ its environment can be used. The plugin never contacts a server itself.
 
 ## Install
 
-1. Download `selfhosted-agents-<version>.zip` and `SHA256SUMS` from
-   [Releases](https://github.com/frankhommers/buzz-external-agent/releases), verify the
-   checksum and unzip it to a folder (it contains `manifest.json` and `plugin.js`).
-2. In Buzz: Settings → Plugins → Manage plugins → Add → Browse, and pick that folder.
+In Buzz: **Settings → Plugins → Manage plugins → Add**, then under _Git or GitHub repository_
+enter `frankhommers/buzz-external-agent`, set _Branch or tag_ to `release`, and choose **Find**.
+Install the plugin it finds and enable it.
+
+The `release` branch holds only the built plugin of the latest stable version. Buzz checks it
+for updates at startup and every hour and offers **Update and reload**; no reinstall needed.
+
+Without Git access: download `selfhosted-agents-<version>.zip` and `SHA256SUMS` from
+[Releases](https://github.com/frankhommers/buzz-external-agent/releases), verify the checksum,
+unzip it and add the folder with **Browse**. A folder install does not update itself.
 
 Or build it: `bun install && bun run build`, then add `dist/plugin`.
 
@@ -85,8 +91,8 @@ no message is sent to yourself.
   the operator, who may still act on it and stop the agent.
 - Hosted agents always appear online in Buzz. Use the **Server** tab for the real status.
 - No remote start or stop.
-- Updating the plugin on Buzz 1.0.5 means deleting it and adding the new version again
-  (there is no reload button).
+- A plugin added as a folder (zip) does not update itself: delete it and add the new version.
+  Install from Git (branch `release`) to get updates in place.
 
 ## Reference installer
 

@@ -83,8 +83,11 @@ jobs:
 
           Requires Buzz Desktop 1.0.5 or newer.
 
-          1. Download `selfhosted-agents-@VERSION@.zip`, check it against `SHA256SUMS` and unzip it to a folder.
-          2. In Buzz: **Settings → Plugins → Manage plugins → Add → Browse**, and pick that folder.
+          **From GitHub (updates itself):** in Buzz, **Settings → Plugins → Manage plugins → Add**, enter
+          `frankhommers/buzz-external-agent` as repository and `release` as branch, then **Find** and install.
+
+          **From the zip:** download `selfhosted-agents-@VERSION@.zip`, check it against `SHA256SUMS`, unzip it
+          and add the folder with **Browse**. A folder install does not update itself.
 
           Then follow the [owner guide](@BASE@/docs/owner-guide.md) or the [operator guide](@BASE@/docs/operator-guide.md).
           NOTES
@@ -92,3 +95,28 @@ jobs:
           flags=""
           case "$VERSION" in *-*) flags="--prerelease" ;; esac
           gh release create "$TAG" release/* --title "Self-hosted agents $VERSION" --notes-file notes.md $flags
+      - name: Publish the built plugin to the release branch
+        # Buzz installs from Git (Settings → Plugins → Add → repository, branch "release") and
+        # updates in place when this branch moves. Pre-releases never move it.
+        if: ${{ !contains(steps.package.outputs.version, '-') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.package.outputs.version }}
+        run: |
+          rm -rf release-branch && mkdir release-branch && cd release-branch
+          git init -q -b release
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git fetch -q --depth=1 origin release; then
+            git checkout -q -B release FETCH_HEAD
+          fi
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp ../dist/plugin/manifest.json ../dist/plugin/plugin.js .
+          git add -A
+          if git diff --cached --quiet; then
+            echo "release branch already has $VERSION"
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "Self-hosted agents $VERSION" -m "Built from ${GITHUB_SHA}."
+          git push -q origin release
