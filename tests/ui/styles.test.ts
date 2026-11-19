@@ -58,6 +58,38 @@ const expectHorizontalRow = (row: Node): void => {
   expect(row.children.some((c) => (c as Node)?.type === 'button')).toBe(true)
 }
 
+const VERTICAL_SIZING = ['height', 'minHeight', 'flexBasis', 'flexGrow', 'flex'] as const
+
+/**
+ * Lists and their items stay compact and left-aligned: no height, minimum height or flex
+ * sizing that could stretch them vertically, start-aligned text, never centred. A child of a
+ * column-direction item must not flex either (that would grow it vertically).
+ */
+const expectCompactLists = (tree: unknown): void => {
+  const lists = findAll(tree, (n) => n.type === 'ul')
+  const items = findAll(tree, (n) => n.type === 'li')
+  expect(lists.length).toBeGreaterThan(0)
+  expect(items.length).toBeGreaterThan(0)
+  for (const node of [...lists, ...items]) {
+    const style = styleOf(node)
+    for (const key of VERTICAL_SIZING) expect(style?.[key]).toBeUndefined()
+    expect(['start', 'left']).toContain(String(style?.textAlign))
+    expect(style?.justifyContent ?? 'flex-start').toBe('flex-start')
+  }
+  for (const list of lists) expect(styleOf(list)?.flexDirection).toBe('column')
+  for (const item of items) {
+    const style = styleOf(item)
+    if (style?.flexDirection === 'row') {
+      expect(style?.alignItems).toBe('center')
+      continue
+    }
+    for (const child of item.children) {
+      const childStyle = styleOf(child as Node)
+      for (const key of VERTICAL_SIZING) expect(childStyle?.[key]).toBeUndefined()
+    }
+  }
+}
+
 const expectHostButtons = (tree: unknown): void => {
   const buttons = findAll(tree, (n) => n.type === 'button')
   expect(buttons.length).toBeGreaterThan(0)
@@ -228,6 +260,39 @@ describe('operator card', () => {
     for (const row of rows) expectHorizontalRow(row)
   })
 
+  test('install and retire requests are compact, left-aligned list items', () => {
+    const base = operatorProps().view
+    const tree = OperatorPanel(
+      treeReact(),
+      operatorProps({
+        view: {
+          ...base,
+          installs: [
+            {
+              id: { slot: 'vps-1', pubkey: 'a'.repeat(64), owner: 'f'.repeat(64) },
+              pubkey: 'a'.repeat(64),
+              name: 'Robo',
+              slot: 'vps-1',
+              label: 'One',
+              owner: 'npub1x',
+              handoff: { filename: 'vps-1.age', fileText: 's', publicJson: '{}', command: 'x' },
+            },
+          ],
+          adopted: [
+            {
+              id: { slot: 'adopted', pubkey: 'c'.repeat(64), owner: 'f'.repeat(64) },
+              pubkey: 'c'.repeat(64),
+              name: 'Old',
+              owner: 'npub1x',
+            },
+          ],
+        },
+      }),
+    )
+    expect(findAll(tree, (n) => n.type === 'li')).toHaveLength(2)
+    expectCompactLists(tree)
+  })
+
   test('an error line uses the danger colour, a result line does not', () => {
     const failed = OperatorPanel(
       treeReact(),
@@ -305,6 +370,32 @@ describe('owner card', () => {
     const rows = findAll(card([view]), (n) => n.type === 'li')
     expect(rows).toHaveLength(1)
     for (const row of rows) expectHorizontalRow(row)
+  })
+
+  test('offer, agent and adopt rows are compact, left-aligned rows', () => {
+    const view = {
+      operator: '',
+      offers: [{ slot: 'buzztest-2', label: 'buzztest' }],
+      agents: [
+        {
+          pubkey: 'd'.repeat(64),
+          name: 'Robo',
+          status: 'Installed',
+          canRetire: true,
+          canCancelRetire: false,
+        },
+      ],
+    }
+    const adoptables = {
+      ok: true,
+      items: [{ pubkey: 'e'.repeat(64), name: 'Old', state: 'ready' }],
+    }
+    // States in order: view, viewError, operatorDraft, notice, busy, adoptables.
+    const tree = card([view, '', undefined, { text: '', error: false }, false, adoptables])
+    expect(findAll(tree, (n) => n.type === 'li')).toHaveLength(3)
+    expectCompactLists(tree)
+    const offer = findAll(tree, (n) => n.type === 'li')[0]
+    expect(styleOf(offer)?.flexDirection).toBe('row')
   })
 
   test('a view error shows in the danger colour', () => {

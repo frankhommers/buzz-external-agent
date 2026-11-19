@@ -120,12 +120,19 @@ export const LIST: Style = {
   display: 'flex',
   flexDirection: 'column',
   gap: 'var(--space-2)',
+  textAlign: 'start',
 }
 
-/** One bordered row in a list. */
+/**
+ * One bordered item in a list, its parts stacked. Sized by its content: no height, no flex
+ * sizing, start-aligned text (a host rule can never centre or stretch it).
+ */
 export const LIST_ITEM: Style = {
   display: 'flex',
   flexDirection: 'column',
+  alignItems: 'stretch',
+  justifyContent: 'flex-start',
+  textAlign: 'start',
   gap: 'var(--space-2)',
   padding: 'var(--space-2) var(--space-3)',
   border: '1px solid var(--border-standard)',
@@ -133,10 +140,16 @@ export const LIST_ITEM: Style = {
 }
 
 /** A list row: text then actions side by side, the actions wrapping below when narrow. */
-export const LIST_ROW: Style = { ...LIST_ITEM, ...ROW, flexDirection: 'row' }
+export const LIST_ROW: Style = { ...LIST_ITEM, ...ROW, flexDirection: 'row', alignItems: 'center' }
 
 /** The text of a list row: takes the free width, sized by its content. */
-export const ROW_TEXT: Style = { ...TEXT, flex: '1 1 auto', minWidth: 0, overflowWrap: 'anywhere' }
+export const ROW_TEXT: Style = {
+  ...TEXT,
+  flex: '1 1 auto',
+  minWidth: 0,
+  overflowWrap: 'anywhere',
+  textAlign: 'start',
+}
 
 /** Lets a wide table scroll inside a narrow card instead of squeezing its words. */
 export const TABLE_WRAP: Style = { overflowX: 'auto', maxWidth: '100%' }
