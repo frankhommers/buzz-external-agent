@@ -49,6 +49,11 @@ describe('plugin build', () => {
     expect(source).not.toContain('globalThis.__zod')
   })
 
+  test('plugin.js leaves out the test-only legacy record helper', () => {
+    const source = readFileSync(resolve(pluginDir, 'plugin.js'), 'utf8')
+    expect(source).not.toContain('published legacy 30177')
+  })
+
   test('plugin.js exports inject and apply', async () => {
     const mod = await import(resolve(pluginDir, 'plugin.js'))
     expect(Array.isArray(mod.inject)).toBe(true)
