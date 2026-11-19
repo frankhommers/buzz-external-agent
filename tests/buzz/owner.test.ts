@@ -152,12 +152,19 @@ describe('buildOwnerView', () => {
       operator: encodeNpub(operator),
       offers: [{ slot: 'vps-1', label: 'Server vps-1' }],
       agents: [
-        { pubkey: agentA, name: 'Robo', status: 'Installed by the operator', canRetire: true },
+        {
+          pubkey: agentA,
+          name: 'Robo',
+          status: 'Installed by the operator',
+          canRetire: true,
+          canCancelRetire: false,
+        },
         {
           pubkey: agentB,
           name: 'Old',
           status: 'Stopped by the operator — you can delete it now',
           canRetire: false,
+          canCancelRetire: false,
         },
       ],
     })
@@ -171,7 +178,21 @@ describe('buildOwnerView', () => {
     store.setStatus(agentA, 'awaiting-install')
     expect(row()).toMatchObject({ status: 'Waiting for installation', canRetire: true })
     store.setStatus(agentA, 'retire-requested')
-    expect(row()).toMatchObject({ status: 'Waiting for the operator', canRetire: false })
+    expect(row()).toMatchObject({
+      status: 'Waiting for the operator',
+      canRetire: false,
+      canCancelRetire: true,
+    })
+  })
+
+  test('an unsent setup on this device is not offered Retire', () => {
+    const store = newStore()
+    store.putPending(pendingFor('vps-1', agentA))
+    const agents = [agentSummary(agentA, 'hosted', { type: RUNTIME })]
+    const row = () => buildOwnerView(store, agents, COMMUNITY).agents[0]
+    expect(row()).toMatchObject({ canRetire: false, canCancelRetire: false })
+    store.setStatus(agentA, 'awaiting-install')
+    expect(row()).toMatchObject({ canRetire: true })
   })
 })
 
@@ -231,7 +252,45 @@ describe('createOwner', () => {
   ] as const)('agentStatus of %p reads %p', async (status, text, canRetire) => {
     const fake = setup()
     if (status !== undefined) fake.store.setStatus(agentA, status)
-    expect(await fake.owner.agentStatus(agentA)).toEqual({ text, canRetire })
+    expect(await fake.owner.agentStatus(agentA)).toEqual({
+      text,
+      canRetire,
+      canCancelRetire: status === 'retire-requested',
+    })
+  })
+
+  test('an unsent setup on this device cannot be retired; Delete frees it', async () => {
+    const fake = setup()
+    fake.store.setSettings({ operator: encodeNpub(operator) })
+    fake.store.putPending(pendingFor('vps-1', agentA))
+    expect(await fake.owner.agentStatus(agentA)).toMatchObject({ canRetire: false })
+    await expect(fake.owner.retire(agentA)).rejects.toThrow(
+      'This agent cannot be retired from here',
+    )
+    expect(fake.sentBlocks).toEqual([])
+    expect(fake.store.statusOf(agentA)).toBeUndefined()
+  })
+
+  test('cancelling a retire request restores the earlier status', async () => {
+    const fake = setup()
+    fake.store.setSettings({ operator: encodeNpub(operator) })
+    fake.store.setStatus(agentA, 'installed')
+    await fake.owner.retire(agentA)
+    expect(fake.store.statusOf(agentA)).toBe('retire-requested')
+    let notified = 0
+    fake.owner.subscribe(() => notified++)
+    await fake.owner.cancelRetire(agentA)
+    expect(fake.store.statusOf(agentA)).toBe('installed')
+    expect(await fake.owner.agentStatus(agentA)).toMatchObject({ canRetire: true })
+    expect(notified).toBe(1)
+    await expect(fake.owner.cancelRetire(agentA)).rejects.toThrow(
+      'There is no retire request to cancel',
+    )
+    fake.store.markRetired(agentA)
+    await expect(fake.owner.cancelRetire(agentA)).rejects.toThrow(
+      'There is no retire request to cancel',
+    )
+    expect(fake.store.statusOf(agentA)).toBe('retired')
   })
 
   test('poll reads only the DM with the operator and applies its blocks', async () => {
@@ -361,7 +420,15 @@ describe('createOwner', () => {
     expect(await fake.owner.view()).toEqual({
       operator: '',
       offers: [],
-      agents: [{ pubkey: agentA, name: 'Robo', status: 'Hosted on your server', canRetire: true }],
+      agents: [
+        {
+          pubkey: agentA,
+          name: 'Robo',
+          status: 'Hosted on your server',
+          canRetire: true,
+          canCancelRetire: false,
+        },
+      ],
     })
   })
 })
@@ -447,6 +514,7 @@ describe('createOwner when the viewer is the operator', () => {
       state: 'installed',
     })
     fake.store.putPending({ ...pendingFor('vps-2', ownAgent), owner: self })
+    fake.store.markInstalled(ownAgent)
     fake.store.addRequest({
       v: 1,
       type: 'install-request',

@@ -63,6 +63,13 @@ export interface Store {
   isRetired(pubkey: string): boolean
   statusOf(pubkey: string): AgentStatus | undefined
   setStatus(pubkey: string, status: AgentStatus): void
+  /** Marks the agent retire-requested, remembering its status from before. */
+  requestRetire(pubkey: string): void
+  /**
+   * Undoes a local retire-requested: back to the remembered status (none for an agent that had
+   * none), or installed when nothing was remembered. Any other status is left alone.
+   */
+  cancelRetire(pubkey: string): void
   slots(): OperatorSlot[]
   putSlot(slot: OperatorSlot): void
   requests(): InstallRequest[]
@@ -74,6 +81,9 @@ export interface Store {
   /** Upserts by owner and agent pubkey. */
   addRetireRequest(request: OperatorRetireRequest): void
 }
+
+/** What `prior-status` remembers for an agent that had no status before its retire request. */
+const NO_STATUS = 'none'
 
 const SECRET_PATTERN = /nsec1[02-9ac-hj-np-z]{20,}/i
 const STATUSES: ReadonlySet<string> = new Set([
@@ -134,6 +144,19 @@ export const createStore = (storage: Storage, scope: { origin: string; viewer: s
   const setStatus = (pubkey: string, status: AgentStatus): void =>
     write('status', { ...readStatuses(), [pubkey]: status })
 
+  const readPriors = (): Record<string, string> => {
+    const value = read('prior-status')
+    if (!isRecord(value)) return {}
+    const result: Record<string, string> = {}
+    for (const [pubkey, prior] of Object.entries(value))
+      if (prior === NO_STATUS || (typeof prior === 'string' && STATUSES.has(prior)))
+        result[pubkey] = prior
+    return result
+  }
+
+  const withoutKey = <T>(record: Record<string, T>, key: string): Record<string, T> =>
+    Object.fromEntries(Object.entries(record).filter(([k]) => k !== key))
+
   return {
     settings: () => {
       const value = read('settings')
@@ -178,6 +201,23 @@ export const createStore = (storage: Storage, scope: { origin: string; viewer: s
     isRetired: (pubkey) => readStatuses()[pubkey] === 'retired',
     statusOf: (pubkey) => readStatuses()[pubkey],
     setStatus,
+    requestRetire: (pubkey) => {
+      write('prior-status', { ...readPriors(), [pubkey]: readStatuses()[pubkey] ?? NO_STATUS })
+      setStatus(pubkey, 'retire-requested')
+    },
+    cancelRetire: (pubkey) => {
+      const statuses = readStatuses()
+      if (statuses[pubkey] !== 'retire-requested') return
+      const priors = readPriors()
+      const prior = priors[pubkey] ?? 'installed'
+      write(
+        'status',
+        prior === NO_STATUS
+          ? withoutKey(statuses, pubkey)
+          : { ...statuses, [pubkey]: prior as AgentStatus },
+      )
+      write('prior-status', withoutKey(priors, pubkey))
+    },
     slots: () => readList<OperatorSlot>('slots'),
     putSlot: (slot) =>
       write(

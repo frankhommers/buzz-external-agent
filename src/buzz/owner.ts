@@ -10,6 +10,7 @@ import type { AgentSummary, AgentsSnapshot } from './types'
 const NO_OPERATOR = 'Set the operator first'
 const BAD_OPERATOR = 'Enter the operator as an npub'
 const NOT_RETIRABLE = 'This agent cannot be retired from here'
+const NO_RETIRE_REQUEST = 'There is no retire request to cancel'
 
 const STATUS_TEXT: Record<AgentStatus | 'none', string> = {
   none: 'Hosted on your server',
@@ -28,10 +29,16 @@ const TAB_STATUS_TEXT: Record<AgentStatus | 'none', string> = {
   retired: 'Stopped by the operator — you can delete it now',
 }
 
-export type AgentStatusView = { text: string; canRetire: boolean }
+export type AgentStatusView = { text: string; canRetire: boolean; canCancelRetire: boolean }
 
 export type OfferRow = { slot: string; label: string }
-export type AgentRow = { pubkey: string; name: string; status: string; canRetire: boolean }
+export type AgentRow = {
+  pubkey: string
+  name: string
+  status: string
+  canRetire: boolean
+  canCancelRetire: boolean
+}
 export type OwnerView = { operator: string; offers: OfferRow[]; agents: AgentRow[] }
 
 export interface OwnerDeps {
@@ -46,6 +53,8 @@ export interface Owner {
   /** Stores the operator npub; rejects anything that is not a valid npub. */
   saveOperator(input: string): Promise<void>
   retire(pubkey: string): Promise<void>
+  /** Takes back a retire request locally: the agent shows its earlier status again. */
+  cancelRetire(pubkey: string): Promise<void>
   /** One agent's status in plain words, and whether it can still be retired. */
   agentStatus(pubkey: string): Promise<AgentStatusView>
   /** Reads the DM with the operator and applies its blocks. No-op when offline or unset. */
@@ -60,6 +69,26 @@ const operatorHex = (store: Store): string | undefined => operatorPubkey(store.s
 
 const isRetiring = (status: AgentStatus | undefined): boolean =>
   status === 'retire-requested' || status === 'retired'
+
+/**
+ * Retire is offered unless the agent is retiring, or it is a setup on this device whose
+ * install-request was never attempted: nothing can run it, and Delete frees it instead.
+ */
+const canRetire = (store: Store, pubkey: string, status: AgentStatus | undefined): boolean =>
+  !isRetiring(status) && !(status === undefined && store.pending().some((p) => p.pubkey === pubkey))
+
+const statusView = (
+  store: Store,
+  pubkey: string,
+  texts: Record<AgentStatus | 'none', string>,
+): AgentStatusView => {
+  const status = store.statusOf(pubkey)
+  return {
+    text: texts[status ?? 'none'],
+    canRetire: canRetire(store, pubkey, status),
+    canCancelRetire: status === 'retire-requested',
+  }
+}
 
 /** Applies the operator's offers and status reports; a status never moves back from retiring. */
 export const applyOperatorBlocks = (
@@ -99,13 +128,8 @@ export const buildOwnerView = (
     .filter((offer) => offer.community === community && store.pendingFor(offer.slot) === undefined)
     .map(({ slot, label }) => ({ slot, label })),
   agents: ourAgents(agents).map((agent) => {
-    const status = store.statusOf(agent.pubkey)
-    return {
-      pubkey: agent.pubkey,
-      name: agent.name,
-      status: STATUS_TEXT[status ?? 'none'],
-      canRetire: !isRetiring(status),
-    }
+    const { text, ...actions } = statusView(store, agent.pubkey, STATUS_TEXT)
+    return { pubkey: agent.pubkey, name: agent.name, status: text, ...actions }
   }),
 })
 
@@ -157,8 +181,7 @@ export const createOwner = (deps: OwnerDeps): Owner => {
 
     agentStatus: async (pubkey) => {
       const { store } = await open()
-      const status = store.statusOf(pubkey)
-      return { text: TAB_STATUS_TEXT[status ?? 'none'], canRetire: !isRetiring(status) }
+      return statusView(store, pubkey, TAB_STATUS_TEXT)
     },
 
     retire: async (pubkey) => {
@@ -166,7 +189,7 @@ export const createOwner = (deps: OwnerDeps): Owner => {
       const operator = operatorHex(store)
       if (operator === undefined) throw new Error(NO_OPERATOR)
       const ours = ourAgents(deps.agents.snapshot().agents).some((a) => a.pubkey === pubkey)
-      if (!ours || isRetiring(store.statusOf(pubkey))) throw new Error(NOT_RETIRABLE)
+      if (!ours || !canRetire(store, pubkey, store.statusOf(pubkey))) throw new Error(NOT_RETIRABLE)
       const slot = store.pending().find((p) => p.pubkey === pubkey)?.slot ?? ADOPTED_SLOT
       const request: RetireRequest = { v: 1, type: 'retire-request', slot, pubkey }
       // The owner is the operator too: list the request locally, no DM to self.
@@ -176,7 +199,14 @@ export const createOwner = (deps: OwnerDeps): Owner => {
           readProfile: (key) => deps.relay.readProfile(key),
         })
       else await deps.relay.sendBlock(operator, request)
-      store.setStatus(pubkey, 'retire-requested')
+      store.requestRetire(pubkey)
+      notify()
+    },
+
+    cancelRetire: async (pubkey) => {
+      const { store } = await open()
+      if (store.statusOf(pubkey) !== 'retire-requested') throw new Error(NO_RETIRE_REQUEST)
+      store.cancelRetire(pubkey)
       notify()
     },
 

@@ -51,3 +51,56 @@ test('renders a host card with the owner sections and no side effects during ren
   expect(effects).toHaveLength(2)
   expect(calls).toBe(0)
 })
+
+test('a retire-requested agent offers Cancel retire request, which calls the owner', async () => {
+  const view = {
+    operator: '',
+    offers: [],
+    agents: [
+      {
+        pubkey: 'd'.repeat(64),
+        name: 'Robo',
+        status: 'Waiting for the operator',
+        canRetire: false,
+        canCancelRetire: true,
+      },
+    ],
+  }
+  let first = true
+  const react: ReactLike = {
+    createElement: (type, props, ...children) => ({ type, props: props ?? null, children }),
+    // The first state is the owner view; every other state keeps its initial value.
+    useState: <T>(initial: T): [T, () => void] => {
+      const value = first ? (view as T) : initial
+      first = false
+      return [value, () => {}]
+    },
+    useEffect: () => {},
+  }
+  const cancelled: string[] = []
+  const owner = {
+    cancelRetire: async (pubkey: string) => void cancelled.push(pubkey),
+  } as unknown as Owner
+  const component = ownerCard({
+    react,
+    owner,
+    relay: {} as Relay,
+    agents: { subscribe: () => () => {} },
+  })
+  const tree = component({ active: () => true })
+  const buttons: Node[] = []
+  const collect = (node: unknown): void => {
+    if (node === null || typeof node !== 'object') return
+    const n = node as Node
+    if (n.type === 'button') buttons.push(n)
+    for (const child of n.children) collect(child)
+  }
+  collect(tree)
+  expect(buttons.some((b) => b.children.includes('Retire'))).toBe(false)
+  const cancel = buttons.find((b) => b.children.includes('Cancel retire request'))
+  const onClick = cancel?.props?.onClick
+  if (typeof onClick !== 'function') throw new Error('no Cancel retire request button')
+  onClick()
+  await Promise.resolve()
+  expect(cancelled).toEqual(['d'.repeat(64)])
+})

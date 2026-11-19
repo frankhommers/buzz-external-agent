@@ -10,9 +10,10 @@ export interface StatusViewProps {
   busy: boolean
   notice: string
   onRetire(): void
+  onCancelRetire(): void
 }
 
-/** Plain status text and, while the agent is not retiring, the Retire button. */
+/** Plain status text, Retire while it is offered, and Cancel retire request while one waits. */
 export const StatusView = (react: ReactLike, props: StatusViewProps): unknown => {
   const h = react.createElement
   return h(
@@ -22,13 +23,20 @@ export const StatusView = (react: ReactLike, props: StatusViewProps): unknown =>
     props.status?.canRetire === true
       ? h('button', { type: 'button', disabled: props.busy, onClick: props.onRetire }, 'Retire')
       : null,
+    props.status?.canCancelRetire === true
+      ? h(
+          'button',
+          { type: 'button', disabled: props.busy, onClick: props.onCancelRetire },
+          'Cancel retire request',
+        )
+      : null,
     props.notice === '' ? null : h('p', { role: 'status' }, props.notice),
   )
 }
 
 export interface StatusTabDeps {
   react: ReactLike
-  owner: Pick<Owner, 'agentStatus' | 'retire' | 'subscribe'>
+  owner: Pick<Owner, 'agentStatus' | 'retire' | 'cancelRetire' | 'subscribe'>
 }
 
 const messageOf = (error: unknown): string =>
@@ -66,11 +74,11 @@ export const statusTab = (deps: StatusTabDeps): AgentAddedTab => {
         }
       }, [pubkey])
 
-      const onRetire = (): void => {
+      const run = (action: (key: string) => Promise<void>): void => {
         if (busy) return
         setBusy(true)
         setNotice('')
-        owner.retire(pubkey).then(
+        action(pubkey).then(
           () => setBusy(false),
           (error: unknown) => {
             setNotice(messageOf(error))
@@ -79,7 +87,13 @@ export const statusTab = (deps: StatusTabDeps): AgentAddedTab => {
         )
       }
 
-      return StatusView(react, { status, busy, notice, onRetire })
+      return StatusView(react, {
+        status,
+        busy,
+        notice,
+        onRetire: () => run((key) => owner.retire(key)),
+        onCancelRetire: () => run((key) => owner.cancelRetire(key)),
+      })
     },
   }
 }

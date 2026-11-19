@@ -174,17 +174,24 @@ const agent = (pubkey: string): Agent =>
   }) as Agent
 
 test.each([
-  ['Waiting for installation', true],
-  ['Installed', true],
-  ['Retirement requested — waiting for the operator', false],
-  ['Stopped by the operator — you can delete it now', false],
-  ['Unknown — set up outside this device', true],
-])('status view shows %s, retire hidden when retiring', (text, canRetire) => {
+  ['Waiting for installation', true, false],
+  ['Installed', true, false],
+  ['Retirement requested — waiting for the operator', false, true],
+  ['Stopped by the operator — you can delete it now', false, false],
+  ['Unknown — set up outside this device', true, false],
+])('status view shows %s, retire hidden when retiring', (text, canRetire, canCancelRetire) => {
   const out = html(
-    StatusView(react, { status: { text, canRetire }, busy: false, notice: '', onRetire: () => {} }),
+    StatusView(react, {
+      status: { text, canRetire, canCancelRetire },
+      busy: false,
+      notice: '',
+      onRetire: () => {},
+      onCancelRetire: () => {},
+    }),
   )
   expect(out).toContain(text)
-  expect(out.includes('Retire</button>')).toBe(canRetire)
+  expect(out.includes('>Retire</button>')).toBe(canRetire)
+  expect(out.includes('>Cancel retire request</button>')).toBe(canCancelRetire)
 })
 
 test('status tab applies to our runtime only', () => {

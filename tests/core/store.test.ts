@@ -106,6 +106,29 @@ describe('createStore', () => {
     expect(store.isRetired(hex('5'))).toBe(true)
   })
 
+  test('a cancelled retire request restores the status from before it', () => {
+    const store = createStore(new MemoryStorage(), scope)
+    for (const prior of ['awaiting-install', 'installed'] as const) {
+      store.setStatus(hex('5'), prior)
+      store.requestRetire(hex('5'))
+      expect(store.statusOf(hex('5'))).toBe('retire-requested')
+      store.cancelRetire(hex('5'))
+      expect(store.statusOf(hex('5'))).toBe(prior)
+    }
+    // An agent without a status (brought into Buzz) goes back to having none.
+    store.requestRetire(hex('6'))
+    store.cancelRetire(hex('6'))
+    expect(store.statusOf(hex('6'))).toBeUndefined()
+    // A retire request from before this was recorded falls back to installed.
+    store.setStatus(hex('7'), 'retire-requested')
+    store.cancelRetire(hex('7'))
+    expect(store.statusOf(hex('7'))).toBe('installed')
+    // Only a pending retire request can be cancelled.
+    store.markRetired(hex('7'))
+    store.cancelRetire(hex('7'))
+    expect(store.statusOf(hex('7'))).toBe('retired')
+  })
+
   test('operator slots and requests dedupe', () => {
     const store = createStore(new MemoryStorage(), scope)
     store.putSlot(slot('one'))

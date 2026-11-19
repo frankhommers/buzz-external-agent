@@ -200,6 +200,21 @@ export const ownerCard = (deps: OwnerCardDeps) =>
                       'Retire',
                     )
                   : null,
+                agent.canCancelRetire
+                  ? h(
+                      'button',
+                      {
+                        type: 'button',
+                        disabled: busy,
+                        onClick: () =>
+                          run(async () => {
+                            await owner.cancelRetire(agent.pubkey)
+                            return 'Retire request cancelled.'
+                          }),
+                      },
+                      'Cancel retire request',
+                    )
+                  : null,
               ),
             ),
           ),
