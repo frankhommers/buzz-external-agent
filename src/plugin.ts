@@ -1,5 +1,6 @@
 import { publishAsAgent } from './buzz/agent-publish'
 import { createOperator } from './buzz/operator'
+import { operatorCardVisibility } from './buzz/operator-visibility'
 import { createOwner } from './buzz/owner'
 import { POLL_INTERVAL_MS } from './buzz/poll'
 import { agentType } from './buzz/provider'
@@ -20,6 +21,8 @@ export interface PluginCtx {
   /** Owns a resource until the plugin is disabled or replaced (Cordis `ctx.effect`). */
   effect(start: () => (() => void) | undefined): () => void
 }
+
+const OPERATOR_CARD_TITLE = 'Self-hosted agents — operator'
 
 export const inject: readonly string[] = ['react', 'agents', 'relay', 'host', 'settingsCards']
 
@@ -52,9 +55,11 @@ export function apply(ctx: PluginCtx): void {
     title: 'Self-hosted agents',
     component: ownerCard({ react: ctx.react, owner, relay, agents: ctx.agents }),
   })
+  // Only the community's operator sees the operator card, also in the Settings list.
   ctx.settingsCards.register({
     id: 'operator',
-    title: 'Self-hosted agents: operator',
+    title: OPERATOR_CARD_TITLE,
     component: operatorCard({ react: ctx.react, operator }),
+    visibility: operatorCardVisibility({ relay: ctx.relay, owner, storeFor }),
   })
 }

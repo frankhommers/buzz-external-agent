@@ -151,12 +151,26 @@ export interface SettingsCardProps {
   community?: { id: string; name: string }
 }
 
-/** features/settings/service.ts:10-40 (SettingsCard, SettingsCards.register), reduced. */
+/**
+ * features/settings/service.ts:30-34 (SettingsCard.visibility): the card is listed only while
+ * `snapshot()` is true. Buzz subscribes for the card's lifetime; `ensure` starts any loading.
+ */
+export interface CardVisibility {
+  snapshot(): boolean | 'pending' | 'error'
+  subscribe(listener: () => void): () => void
+  ensure(): () => void
+}
+
+/**
+ * features/settings/service.ts:10-40 (SettingsCard, SettingsCards.register), reduced.
+ * `register` returns nothing in 1.0.5 (service.ts:104-131): a card cannot be removed early.
+ */
 export interface SettingsCards {
   register(card: {
     id: string
     title: string
     component: (props: SettingsCardProps) => unknown
+    visibility?: CardVisibility
   }): void
 }
 
