@@ -5,6 +5,7 @@ const vars = {
   name: 'Robo',
   slot: 'vps-1',
   host: 'h.example',
+  relay: 'wss://relay.example.com',
   pubkey: 'a'.repeat(64),
   npub: 'npub1xyz',
   auth_tag: '["auth","x","","y"]',
@@ -14,11 +15,11 @@ const vars = {
 describe('renderTemplate', () => {
   test('renders all placeholders quoted and leaves literal text', () => {
     const out = renderTemplate(
-      'ssh {host} {slot} {name} {pubkey} {npub} {auth_tag} {file} $HOME }',
+      'ssh {host} {slot} {name} {relay} {pubkey} {npub} {auth_tag} {file} $HOME }',
       vars,
     )
     expect(out).toBe(
-      `ssh 'h.example' 'vps-1' 'Robo' '${vars.pubkey}' 'npub1xyz' '${vars.auth_tag}' '/tmp/key.age' $HOME }`,
+      `ssh 'h.example' 'vps-1' 'Robo' 'wss://relay.example.com' '${vars.pubkey}' 'npub1xyz' '${vars.auth_tag}' '/tmp/key.age' $HOME }`,
     )
   })
 

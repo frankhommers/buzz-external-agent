@@ -3,7 +3,8 @@ import type { SettingsCardProps } from '../buzz/types'
 import type { ReactLike } from './OwnerCard'
 
 export const TEMPLATE_HELP =
-  'Placeholders: {name}, {slot}, {host}, {pubkey}, {npub}, {auth_tag}, {file}. ' +
+  'Placeholders: {name}, {slot}, {host}, {relay}, {pubkey}, {npub}, {auth_tag}, {file}. ' +
+  "{host} = the slot's server label, {relay} = the community relay URL. " +
   'Do not put quotes around placeholders; values are shell-quoted automatically.'
 
 const PANEL_STYLE = { padding: 'var(--space-panel-inset)' }

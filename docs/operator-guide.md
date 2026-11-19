@@ -31,8 +31,9 @@ slot replaces the older one.
 
 ## Command template
 
-Optional. Placeholders: `{name}`, `{slot}`, `{host}`, `{pubkey}`, `{npub}`, `{auth_tag}`,
-`{file}`.
+Optional. Placeholders: `{name}`, `{slot}`, `{host}`, `{relay}`, `{pubkey}`, `{npub}`,
+`{auth_tag}`, `{file}`. `{host}` is the slot's server label; `{relay}` is the community relay
+URL (`wss://…`) the agent connects to. The public data also includes `relay`.
 
 **Do not put quotes around placeholders; values are shell-quoted automatically.**
 

@@ -163,12 +163,18 @@ const fakeRelay = (options: FakeOptions = {}) => {
 describe('handoff', () => {
   test('names the file after the slot and lists the public data exactly', () => {
     const request = installRequest()
-    const result = handoff(request, slot('vps-1'))
+    const result = handoff(request, slot('vps-1'), COMMUNITY)
     expect(result.filename).toBe('vps-1.age')
     expect(result.fileText).toBe(SEALED)
     expect(result.publicJson).toBe(
       JSON.stringify(
-        { name: 'Robo', host: 'Server vps-1', pubkey: agent, auth_tag: request.auth },
+        {
+          name: 'Robo',
+          host: 'Server vps-1',
+          relay: COMMUNITY,
+          pubkey: agent,
+          auth_tag: request.auth,
+        },
         null,
         2,
       ),
@@ -181,11 +187,13 @@ describe('handoff', () => {
     const result = handoff(
       request,
       slot('vps-1'),
-      'deploy -e name={name} -e slot={slot} -e host={host} {pubkey} {npub} {auth_tag} {file}',
+      COMMUNITY,
+      'deploy -e name={name} -e slot={slot} -e host={host} -e relay={relay} {pubkey} {npub} {auth_tag} {file}',
     )
     expect(result.command).toBe(
       [
         "deploy -e name='Robo' -e slot='vps-1' -e host='Server vps-1'",
+        `-e relay='${COMMUNITY}'`,
         `'${agent}'`,
         `'${encodeNpub(agent)}'`,
         `'${JSON.stringify(request.auth)}'`,
@@ -195,7 +203,7 @@ describe('handoff', () => {
   })
 
   test('a blank template yields no command', () => {
-    expect(handoff(installRequest(), slot('vps-1'), '  ')).not.toHaveProperty('command')
+    expect(handoff(installRequest(), slot('vps-1'), COMMUNITY, '  ')).not.toHaveProperty('command')
   })
 })
 
@@ -363,7 +371,7 @@ describe('confirm', () => {
       { to: stranger, block: { v: 1, type: 'retired', slot: 'adopted', pubkey: agent } },
     ])
     expect(store.slots()).toEqual([])
-    expect(buildOperatorView(store).adopted).toEqual([])
+    expect(buildOperatorView(store, COMMUNITY).adopted).toEqual([])
     await expect(
       confirm(relay, store, 'retired', idOf(agent, 'adopted', stranger)),
     ).rejects.toThrow()
@@ -377,7 +385,7 @@ describe('confirm', () => {
     await expect(confirm(relay, store, 'retired', idOf(agent, 'adopted'))).rejects.toThrow(
       'not sent',
     )
-    expect(buildOperatorView(store).adopted.map((a) => a.pubkey)).toEqual([agent])
+    expect(buildOperatorView(store, COMMUNITY).adopted.map((a) => a.pubkey)).toEqual([agent])
   })
 
   test('a failed send leaves the slot state unchanged', async () => {
@@ -835,15 +843,15 @@ describe('the operator as owner: local requests, no DM', () => {
 describe('buildOperatorView', () => {
   test('shows slots, open install requests with their handoff, and open retire requests', () => {
     const store = newStore()
-    store.setSettings({ operator: encodeNpub(operator), template: 'deploy {slot}' })
+    store.setSettings({ operator: encodeNpub(operator), template: 'deploy {slot} {relay}' })
     store.putSlot(slot('vps-1', { state: 'requested' }))
     store.putSlot(slot('vps-2', { state: 'installed' }))
     store.putSlot(openSlot('vps-3'))
     store.addRequest(installRequest())
     store.addRequest(installRequest({ slot: 'vps-2', pubkey: otherAgent }))
     store.addRetireRequest(storedRetire(otherAgent, 'vps-2'))
-    const view = buildOperatorView(store)
-    expect(view.template).toBe('deploy {slot}')
+    const view = buildOperatorView(store, COMMUNITY)
+    expect(view.template).toBe('deploy {slot} {relay}')
     expect(view.slots.map((s) => [s.slot, s.state, s.owner])).toEqual([
       ['vps-1', 'requested', encodeNpub(owner)],
       ['vps-2', 'installed', encodeNpub(owner)],
@@ -855,7 +863,7 @@ describe('buildOperatorView', () => {
       name: 'Robo',
       slot: 'vps-1',
       id: idOf(),
-      handoff: { filename: 'vps-1.age', command: "deploy 'vps-1'" },
+      handoff: { filename: 'vps-1.age', command: `deploy 'vps-1' '${COMMUNITY}'` },
     })
     expect(view.retires).toEqual([
       {
@@ -873,7 +881,7 @@ describe('buildOperatorView', () => {
     store.setSettings({ owners: [owner, stranger] })
     store.addRetireRequest({ ...retireRequest(agent, 'adopted'), owner, name: 'Old agent' })
     store.addRetireRequest({ ...retireRequest(otherAgent, 'adopted'), owner: stranger })
-    const view = buildOperatorView(store)
+    const view = buildOperatorView(store, COMMUNITY)
     expect(view.owners).toEqual([encodeNpub(owner), encodeNpub(stranger)])
     expect(view.retires).toEqual([])
     expect(view.adopted).toEqual([
@@ -891,7 +899,7 @@ describe('buildOperatorView', () => {
       name: 'Old agent',
       retired: true,
     })
-    expect(buildOperatorView(store).adopted.map((a) => a.pubkey)).toEqual([otherAgent])
+    expect(buildOperatorView(store, COMMUNITY).adopted.map((a) => a.pubkey)).toEqual([otherAgent])
   })
 
   test('a template with an unknown placeholder shows an error instead of a command', () => {
@@ -899,7 +907,7 @@ describe('buildOperatorView', () => {
     store.setSettings({ template: 'deploy {nope}' })
     store.putSlot(slot('vps-1', { state: 'requested' }))
     store.addRequest(installRequest())
-    expect(buildOperatorView(store).installs[0]).toMatchObject({
+    expect(buildOperatorView(store, COMMUNITY).installs[0]).toMatchObject({
       commandError: 'Unknown placeholder {nope}',
     })
   })
@@ -1034,10 +1042,10 @@ describe('createOperator', () => {
     await expect(fake.op.saveTemplate('deploy {nope}')).rejects.toThrow(
       'Unknown placeholder {nope}',
     )
-    await fake.op.saveTemplate('deploy {name}')
+    await fake.op.saveTemplate('deploy {name} {relay}')
     expect(fake.store.settings()).toEqual({
       operator: encodeNpub(operator),
-      template: 'deploy {name}',
+      template: 'deploy {name} {relay}',
     })
   })
 

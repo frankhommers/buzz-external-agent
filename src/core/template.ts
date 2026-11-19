@@ -1,5 +1,5 @@
 export type TemplateVars = Record<
-  'name' | 'slot' | 'host' | 'pubkey' | 'npub' | 'auth_tag' | 'file',
+  'name' | 'slot' | 'host' | 'relay' | 'pubkey' | 'npub' | 'auth_tag' | 'file',
   string
 >
 

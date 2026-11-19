@@ -81,6 +81,11 @@ const props = (overrides: Partial<OperatorPanelProps> = {}): OperatorPanelProps 
   ...overrides,
 })
 
+test('the template help lists {relay} and explains {host}', () => {
+  expect(TEMPLATE_HELP).toContain('{relay} = the community relay URL')
+  expect(TEMPLATE_HELP).toContain("{host} = the slot's server label")
+})
+
 test('the template help says placeholders must not be quoted', () => {
   expect(TEMPLATE_HELP).toContain(
     'Do not put quotes around placeholders; values are shell-quoted automatically.',

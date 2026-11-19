@@ -45,6 +45,7 @@ const SAMPLE_VARS: TemplateVars = {
   name: 'name',
   slot: 'slot',
   host: 'host',
+  relay: 'relay',
   pubkey: 'pubkey',
   npub: 'npub',
   auth_tag: 'auth_tag',
@@ -219,10 +220,12 @@ export const importSlots = (
 /**
  * What the operator needs to install an agent: the sealed key file, the public data and,
  * with a template, the rendered command. Template values are shell-quoted by renderTemplate.
+ * `relay` is the community's wss URL the agent connects to.
  */
 export const handoff = (
   request: InstallRequest,
   slot: OperatorSlot,
+  relay: string,
   template?: string,
 ): Handoff => {
   const { name, pubkey, auth } = request
@@ -230,13 +233,14 @@ export const handoff = (
   const result: Handoff = {
     filename,
     fileText: request.sealed,
-    publicJson: JSON.stringify({ name, host: slot.label, pubkey, auth_tag: auth }, null, 2),
+    publicJson: JSON.stringify({ name, host: slot.label, relay, pubkey, auth_tag: auth }, null, 2),
   }
   if (template === undefined || template.trim() === '') return result
   result.command = renderTemplate(template, {
     name,
     slot: slot.slot,
     host: slot.label,
+    relay,
     pubkey,
     npub: encodeNpub(pubkey),
     auth_tag: JSON.stringify(auth),
@@ -419,7 +423,8 @@ const npubOf = (pubkey: string | undefined): string =>
 const isOpenAdopted = (request: OperatorRetireRequest): boolean =>
   request.slot === ADOPTED_SLOT && request.retired !== true
 
-export const buildOperatorView = (store: Store): OperatorView => {
+/** `community` is the community's wss URL, the `{relay}` of every handoff. */
+export const buildOperatorView = (store: Store, community: string): OperatorView => {
   const settings = store.settings()
   const template = settings.template ?? ''
   const slots = store.slots()
@@ -437,9 +442,13 @@ export const buildOperatorView = (store: Store): OperatorView => {
       owner: npubOf(slot.owner),
     }
     try {
-      installs.push({ ...row, handoff: handoff(request, slot, template) })
+      installs.push({ ...row, handoff: handoff(request, slot, community, template) })
     } catch (error) {
-      installs.push({ ...row, handoff: handoff(request, slot), commandError: messageOf(error) })
+      installs.push({
+        ...row,
+        handoff: handoff(request, slot, community),
+        commandError: messageOf(error),
+      })
     }
   }
   const retires: RetireRow[] = []
@@ -514,10 +523,15 @@ export const createOperator = (deps: OperatorDeps): Operator => {
   // Each refusal is logged once per session, not on every poll.
   const warned = new Set<string>()
 
-  const open = async (): Promise<{ store: Store; viewer: string; isOperator: boolean }> => {
-    const { origin, viewer } = await deps.relay.ready()
+  const open = async (): Promise<{
+    store: Store
+    viewer: string
+    community: string
+    isOperator: boolean
+  }> => {
+    const { origin, viewer, community } = await deps.relay.ready()
     const store = deps.storeFor({ origin, viewer })
-    return { store, viewer, isOperator: operatorPubkey(store.settings()) === viewer }
+    return { store, viewer, community, isOperator: operatorPubkey(store.settings()) === viewer }
   }
 
   const openAsOperator = async (): Promise<Store> => {
@@ -573,8 +587,8 @@ export const createOperator = (deps: OperatorDeps): Operator => {
 
   return {
     view: async () => {
-      const { store, isOperator } = await open()
-      return isOperator ? buildOperatorView(store) : undefined
+      const { store, community, isOperator } = await open()
+      return isOperator ? buildOperatorView(store, community) : undefined
     },
 
     offer: async (input) => {
