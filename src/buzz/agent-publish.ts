@@ -30,6 +30,12 @@ const CLOSED = 'The relay closed the connection'
 const SIGN_IN_REFUSED = 'The relay refused the agent sign-in'
 const EVENT_REFUSED = 'The relay refused the agent profile'
 const ABORTED = 'Publishing the agent profile was cancelled'
+const SIGN_IN_FAILED = 'Could not sign in as the agent'
+/** Most of the relay's OK text shown in an error. */
+const RELAY_TEXT_MAX = 200
+// C0 and C1 control characters, which could garble or spoof an error line.
+// biome-ignore lint/suspicious/noControlCharactersInRegex: matching them is the point.
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f]/g
 
 type Phase = 'challenge' | 'auth' | 'event'
 
@@ -43,8 +49,12 @@ const parseFrame = (data: unknown): unknown[] | undefined => {
   }
 }
 
-const refusal = (prefix: string, message: unknown): string =>
-  typeof message === 'string' && message !== '' ? `${prefix}: ${message}` : prefix
+/** The relay's text is untrusted: control characters are dropped and the length capped. */
+const refusal = (prefix: string, message: unknown): string => {
+  if (typeof message !== 'string') return prefix
+  const shown = message.replace(CONTROL_CHARACTERS, '').slice(0, RELAY_TEXT_MAX)
+  return shown === '' ? prefix : `${prefix}: ${shown}`
+}
 
 /**
  * Publishes an agent-signed event on its own connection, signed in (NIP-42) as the agent:
@@ -94,7 +104,14 @@ export const publishAsAgent = (input: PublishAsAgentInput): Promise<void> =>
       if (phase === 'challenge') {
         if (type !== 'AUTH' || typeof first !== 'string') return
         const createdAt = Math.floor((input.now ?? Date.now)() / MS_PER_SECOND)
-        const authEvent = buildAuthEvent(secret, relay, first, auth, createdAt)
+        let authEvent: SignedEvent
+        try {
+          authEvent = buildAuthEvent(secret, relay, first, auth, createdAt)
+        } catch {
+          // The cause is not passed on: it may describe the key.
+          settle(new Error(SIGN_IN_FAILED))
+          return
+        }
         authId = authEvent.id
         enter('auth')
         send(['AUTH', authEvent])

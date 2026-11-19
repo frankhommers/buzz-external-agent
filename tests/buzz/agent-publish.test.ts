@@ -71,7 +71,9 @@ const owner = generateSecretKey()
 
 const NOW_MS = 1_800_000_123_456
 
-const fixture = (overrides: { timeoutMs?: number; signal?: AbortSignal } = {}) => {
+const fixture = (
+  overrides: { timeoutMs?: number; signal?: AbortSignal; secret?: Uint8Array } = {},
+) => {
   const secret = generateSecretKey()
   const pubkey = publicKeyHex(secret)
   const auth: NipOaTag = signNipOaForTests(owner, pubkey)
@@ -202,6 +204,38 @@ describe('publishAsAgent', () => {
     socket().frame(['AUTH', 'late'])
     await tick()
     expect(socket().sent).toEqual([])
+  })
+
+  test('a failure to sign the sign-in event rejects clearly and closes', async () => {
+    const { promise } = fixture({ secret: new Uint8Array(32) })
+    socket().frame(['AUTH', 'challenge-1'])
+    await expect(promise).rejects.toThrow('Could not sign in as the agent')
+    expect(socket().sent).toEqual([])
+    expect(socket().closed).toBe(true)
+    expect(socket().listenerCount()).toBe(0)
+  })
+
+  test('relay text in an error is capped at 200 characters without control characters', async () => {
+    const { promise } = fixture()
+    socket().frame(['AUTH', 'challenge-1'])
+    const text = `blocked:\u001b[31m\r\n${'x'.repeat(300)}`
+    socket().frame(['OK', authEventSent().id, false, text])
+    const error = (await promise.catch((e: unknown) => e)) as Error
+    const prefix = 'The relay refused the agent sign-in: '
+    expect(error.message.startsWith(prefix)).toBe(true)
+    const shown = error.message.slice(prefix.length)
+    expect(shown).toHaveLength(200)
+    expect(shown.startsWith('blocked:[31m')).toBe(true)
+    const isControl = (c: string): boolean => c < ' ' || (c >= '\u007f' && c <= '\u009f')
+    expect([...error.message].some(isControl)).toBe(false)
+  })
+
+  test('a refused event with control characters only falls back to the plain refusal', async () => {
+    const { event, promise } = fixture()
+    socket().frame(['AUTH', 'challenge-1'])
+    socket().frame(['OK', authEventSent().id, true, ''])
+    socket().frame(['OK', event.id, false, '\u0000\u0007'])
+    await expect(promise).rejects.toThrow(/^The relay refused the agent profile$/)
   })
 
   test('never puts the secret key in a frame or error', async () => {
