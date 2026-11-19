@@ -23,6 +23,17 @@ const STATUS_TEXT: Record<AgentStatus | 'none', string> = {
   retired: 'Stopped by the operator — you can delete it now',
 }
 
+/** The wording on an agent's own Server tab. */
+const TAB_STATUS_TEXT: Record<AgentStatus | 'none', string> = {
+  none: 'Unknown — set up outside this device',
+  'awaiting-install': 'Waiting for installation',
+  installed: 'Installed',
+  'retire-requested': 'Retirement requested — waiting for the operator',
+  retired: 'Stopped by the operator — you can delete it now',
+}
+
+export type AgentStatusView = { text: string; canRetire: boolean }
+
 export type OfferRow = { slot: string; label: string }
 export type AgentRow = { pubkey: string; name: string; status: string; canRetire: boolean }
 export type OwnerView = { operator: string; offers: OfferRow[]; agents: AgentRow[] }
@@ -39,6 +50,8 @@ export interface Owner {
   /** Stores the operator npub; rejects anything that is not a valid npub. */
   saveOperator(input: string): Promise<void>
   retire(pubkey: string): Promise<void>
+  /** One agent's status in plain words, and whether it can still be retired. */
+  agentStatus(pubkey: string): Promise<AgentStatusView>
   /** Reads the DM with the operator and applies its blocks. No-op when offline or unset. */
   poll(): Promise<void>
   /** `poll`, logging a failure instead of rejecting; the next tick retries. */
@@ -160,6 +173,12 @@ export const createOwner = (deps: OwnerDeps): Owner => {
       const { store } = await open()
       store.setSettings({ ...store.settings(), operator })
       notify()
+    },
+
+    agentStatus: async (pubkey) => {
+      const { store } = await open()
+      const status = store.statusOf(pubkey)
+      return { text: TAB_STATUS_TEXT[status ?? 'none'], canRetire: !isRetiring(status) }
     },
 
     retire: async (pubkey) => {

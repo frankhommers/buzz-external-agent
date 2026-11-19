@@ -3,7 +3,9 @@ import { agentType } from './buzz/provider'
 import { createRelay } from './buzz/relay'
 import type { AgentsService, Host, RelayData, SettingsCards } from './buzz/types'
 import { createStore, type Store } from './core/store'
+import { createConfiguration } from './ui/CreateConfiguration'
 import { ownerCard, type ReactLike } from './ui/OwnerCard'
+import { statusTab } from './ui/StatusTab'
 
 export interface PluginCtx {
   react: ReactLike
@@ -21,9 +23,17 @@ export function apply(ctx: PluginCtx): void {
   const relay = createRelay(ctx)
   const storeFor = (scope: { origin: string; viewer: string }): Store =>
     createStore(globalThis.localStorage, scope)
-  ctx.agents.register(agentType({ relay, storeFor, host: ctx.host, now: () => Date.now() }))
-
   const owner = createOwner({ relay, storeFor, agents: ctx.agents })
+  ctx.agents.register(
+    agentType({
+      relay,
+      storeFor,
+      host: ctx.host,
+      now: () => Date.now(),
+      createConfiguration: createConfiguration({ react: ctx.react, owner }),
+    }),
+  )
+  ctx.agents.registerTab(statusTab({ react: ctx.react, owner }))
   ctx.effect(() => {
     const timer = setInterval(() => void owner.pollSafely(), POLL_INTERVAL_MS)
     return () => clearInterval(timer)

@@ -6,7 +6,7 @@ import { type NipOaTag, parseNipOaTag, verifyNipOa } from '../core/nipoa'
 import { parseHostKey, sealSecret } from '../core/seal'
 import type { PendingSetup, Store } from '../core/store'
 import type { Relay } from './relay'
-import type { AgentType, Host, RemoteAgentType } from './types'
+import type { AgentType, CreateConfigurationProps, Host, RemoteAgentType } from './types'
 
 export type SelfHostedConfig = { slot: string }
 
@@ -17,6 +17,8 @@ export interface ProviderDeps {
   host: Pick<Host, 'prepareRemoteAgentAuthorization'>
   /** Wall-clock Unix milliseconds. */
   now(): number
+  /** The New agent dialog's server picker. */
+  createConfiguration?: (props: CreateConfigurationProps<SelfHostedConfig>) => unknown
 }
 
 const TITLE = 'Self-hosted agent'
@@ -183,5 +185,8 @@ export const agentType = (deps: ProviderDeps): AgentType<SelfHostedConfig> => ({
   title: TITLE,
   defaults: () => ({ config: { slot: '' } }),
   summary: () => 'Runs on your own server',
+  ...(deps.createConfiguration === undefined
+    ? {}
+    : { CreateConfiguration: deps.createConfiguration }),
   remote: createProvider(deps),
 })

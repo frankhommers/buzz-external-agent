@@ -113,6 +113,36 @@ export interface AgentsService {
   snapshot(): AgentsSnapshot
   subscribe(listener: () => void): () => void
   register<Config>(type: AgentType<Config>): void
+  registerTab(tab: AgentAddedTab): void
+}
+
+/** features/agents/service.ts:400-415 (AgentAddedTab), reduced; `open`/`canOpen` are unused. */
+export interface AgentAddedTab {
+  id: string
+  title: string
+  component: (props: { agent: Agent }) => unknown
+  when?: (agent: Agent) => boolean
+  subscribe?: (listener: () => void) => () => void
+}
+
+/**
+ * features/agents/service.ts:367-385 (AgentCreateProps): the starting config comes in as `config`
+ * and the choice goes back through `onChange(config)`; `disabled` locks the controls.
+ */
+export interface AgentCreateProps<Config> {
+  config: Config
+  onChange(config: Config, options?: { suggested?: boolean }): void
+  disabled: boolean
+}
+
+/**
+ * features/agents/service.ts:996-1001 (CreateConfiguration props): `harnessControl` is the host's
+ * Harness row, placed by the type; `onReadyChange(ready)` gates the dialog's create button
+ * (usage: bundled/claude-code/tabs.tsx:704-717). The props carry no community or relay.
+ */
+export type CreateConfigurationProps<Config> = AgentCreateProps<Config> & {
+  harnessControl: unknown
+  onReadyChange?: (ready: boolean) => void
 }
 
 /** features/settings/service.ts:10-20 (SettingsCard component props, reduced). */
@@ -201,6 +231,8 @@ export type AgentType<Config = unknown> = {
   description?: string
   defaults(): Readonly<{ config: Config }>
   summary?(agent: Agent<Config>): string
+  /** service.ts:996 (ComponentType; here a plain function component). */
+  CreateConfiguration?: (props: CreateConfigurationProps<Config>) => unknown
   remote?: RemoteAgentType
 }
 

@@ -5,6 +5,7 @@ import { fakeCtx } from './helpers/fake-session'
 const pluginCtx = () => {
   const { ctx } = fakeCtx()
   const registered: unknown[] = []
+  const tabs: { id: string; title: string }[] = []
   const cards: { id: string; title: string; component: unknown }[] = []
   const effects: (() => (() => void) | undefined)[] = []
   const value: PluginCtx = {
@@ -14,6 +15,7 @@ const pluginCtx = () => {
       ...ctx.agents,
       subscribe: () => () => {},
       register: (type) => void registered.push(type),
+      registerTab: (tab) => void tabs.push(tab),
     },
     host: {
       prepareRemoteAgentAuthorization: async () => {
@@ -26,7 +28,7 @@ const pluginCtx = () => {
       return () => {}
     },
   }
-  return { value, registered, cards, effects }
+  return { value, registered, tabs, cards, effects }
 }
 
 test('injects what the plugin uses', () => {
@@ -55,4 +57,13 @@ test('apply owns the operator poll through one effect with a cleanup', () => {
   const stop = effects[0]?.()
   expect(typeof stop).toBe('function')
   stop?.()
+})
+
+test('apply adds the Server status tab and the create configuration', () => {
+  const { value, registered, tabs } = pluginCtx()
+  apply(value)
+  expect(tabs).toMatchObject([{ id: 'status', title: 'Server' }])
+  expect(typeof (registered[0] as { CreateConfiguration?: unknown }).CreateConfiguration).toBe(
+    'function',
+  )
 })
