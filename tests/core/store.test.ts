@@ -80,6 +80,10 @@ describe('createStore', () => {
     store.putPending(pending('one'))
     expect(store.pending().length).toBe(1)
     expect(store.pendingFor('one')?.name).toBe('Bot')
+    store.putPending(pending('two', hex('6')))
+    store.deletePending(hex('5'))
+    expect(store.pendingFor('one')).toBeUndefined()
+    expect(store.pendingFor('two')?.pubkey).toBe(hex('6'))
   })
 
   test('status lifecycle', () => {

@@ -35,6 +35,7 @@ export interface Store {
   pending(): PendingSetup[]
   putPending(pending: PendingSetup): void
   pendingFor(slot: string): PendingSetup | undefined
+  deletePending(pubkey: string): void
   markInstalled(pubkey: string): void
   markRetired(pubkey: string): void
   isRetired(pubkey: string): boolean
@@ -136,6 +137,11 @@ export const createStore = (storage: Storage, scope: { origin: string; viewer: s
         upsert(readList<PendingSetup>('pending'), pending, (p) => p.slot === pending.slot),
       ),
     pendingFor: (slot) => readList<PendingSetup>('pending').find((p) => p.slot === slot),
+    deletePending: (pubkey) =>
+      write(
+        'pending',
+        readList<PendingSetup>('pending').filter((p) => p.pubkey !== pubkey),
+      ),
     markInstalled: (pubkey) => setStatus(pubkey, 'installed'),
     markRetired: (pubkey) => setStatus(pubkey, 'retired'),
     isRetired: (pubkey) => readStatuses()[pubkey] === 'retired',

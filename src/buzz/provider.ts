@@ -168,6 +168,11 @@ export const createProvider = (deps: ProviderDeps): RemoteAgentType => {
     remove: async ({ pubkey, signal }) => {
       signal.throwIfAborted()
       const { store } = await open()
+      // No install-request was ever sent, so the agent cannot be running: free its slot.
+      if (store.statusOf(pubkey) === undefined) {
+        store.deletePending(pubkey)
+        return
+      }
       if (!store.isRetired(pubkey)) throw new Error(RETIRE_FIRST)
     },
   }

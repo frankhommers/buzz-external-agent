@@ -308,9 +308,32 @@ describe('profile', () => {
 })
 
 describe('remove', () => {
-  test('throws until retired, then resolves', async () => {
+  test('an unfinished setup is removed and frees its slot', async () => {
+    const { provider, store, blocks } = setup()
+    const { pubkey } = await provider.provision(provisionInput())
+
+    await expect(
+      provider.remove({ pubkey, community: COMMUNITY, signal: signal() }),
+    ).resolves.toBeUndefined()
+    expect(store.pendingFor('vps-1')).toBeUndefined()
+    expect(blocks).toHaveLength(0)
+
+    const again = await provider.provision(provisionInput())
+    expect(again.pubkey).not.toBe(pubkey)
+  })
+
+  test('throws while awaiting install, resolves once retired', async () => {
     const { provider, store } = setup()
     const { pubkey } = await provider.provision(provisionInput())
+    const auth = signNipOaForTests(generateSecretKey(), pubkey)
+    await provider.activate({
+      pubkey,
+      name: 'Helper',
+      community: COMMUNITY,
+      auth,
+      signal: signal(),
+    })
+    expect(store.statusOf(pubkey)).toBe('awaiting-install')
     const input = { pubkey, community: COMMUNITY, signal: signal() }
 
     await expect(provider.remove(input)).rejects.toThrow(
