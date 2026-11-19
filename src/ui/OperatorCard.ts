@@ -23,6 +23,7 @@ export interface OperatorPanelProps {
   onOfferOpen(slot: string, owner: string): void
   onImport(text: string): void
   onSaveTemplate(template: string): void
+  onSaveOwners(text: string): void
   onDownload(handoff: Handoff): void
   onCopy(text: string, what: string): void
   onConfirm(kind: 'installed' | 'retired', pubkey: string): void
@@ -190,28 +191,52 @@ export const OperatorPanel = (react: ReactLike, props: OperatorPanelProps): unkn
         ),
   )
 
+  const retireRow = (key: string, text: string, pubkey: string): unknown =>
+    h(
+      'li',
+      { key, style: ROW_STYLE },
+      h('span', null, text),
+      button('Retired', () => props.onConfirm('retired', pubkey)),
+    )
+  const noRetires = view.retires.length === 0 && view.adopted.length === 0
   const retiresSection = h(
     'div',
     null,
     h('h3', null, 'Retire requests'),
-    view.retires.length === 0
+    noRetires
       ? h('p', null, 'No open retire requests.')
       : h(
           'ul',
           null,
           ...view.retires.map((retire) =>
-            h(
-              'li',
-              { key: retire.pubkey, style: ROW_STYLE },
-              h(
-                'span',
-                null,
-                `Agent ${retire.pubkey.slice(0, 8)} on ${retire.label} (${retire.slot}) for ${retire.owner}`,
-              ),
-              button('Retired', () => props.onConfirm('retired', retire.pubkey)),
+            retireRow(
+              retire.pubkey,
+              `Agent ${retire.pubkey.slice(0, 8)} on ${retire.label} (${retire.slot}) for ${retire.owner}`,
+              retire.pubkey,
+            ),
+          ),
+          ...view.adopted.map((retire) =>
+            retireRow(
+              retire.pubkey,
+              `Existing agent ${retire.name} — owner ${retire.owner}`,
+              retire.pubkey,
             ),
           ),
         ),
+  )
+
+  const ownersSection = h(
+    'div',
+    null,
+    h('h3', null, 'Known owners'),
+    h(
+      'p',
+      null,
+      'Owners whose existing agents you run. Their messages are read even without a server ' +
+        'offered here, so they can ask you to retire an agent. One npub per line.',
+    ),
+    area('owners', 'Known owners', 'npub1…', view.owners.join('\n')),
+    button('Save owners', () => props.onSaveOwners(draft('owners', view.owners.join('\n')))),
   )
 
   const templateSection = h(
@@ -236,6 +261,7 @@ export const OperatorPanel = (react: ReactLike, props: OperatorPanelProps): unkn
     addSection,
     installsSection,
     retiresSection,
+    ownersSection,
     templateSection,
   )
 }
@@ -350,6 +376,12 @@ export const operatorCard = (deps: OperatorCardDeps) =>
           const count = await operator.importSlots(text)
           clearDrafts('import')
           return `Imported ${count} server${count === 1 ? '' : 's'}.`
+        }),
+      onSaveOwners: (text) =>
+        run(async () => {
+          await operator.saveOwners(text)
+          clearDrafts('owners')
+          return 'Known owners saved.'
         }),
       onSaveTemplate: (template) =>
         run(async () => {

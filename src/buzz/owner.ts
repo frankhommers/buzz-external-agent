@@ -1,13 +1,10 @@
-import { RUNTIME } from '../constants'
+import { ADOPTED_SLOT, RUNTIME } from '../constants'
 import { decodeNpub } from '../core/keys'
 import { type AcceptContext, acceptBlock, type RetireRequest } from '../core/messages'
 import { type AgentStatus, operatorPubkey, type Store } from '../core/store'
 import { createPoll } from './poll'
 import type { BlockMessage, Relay } from './relay'
 import type { AgentSummary, AgentsSnapshot } from './types'
-
-/** The retire-request slot for an agent brought into Buzz rather than set up here. */
-const ADOPTED_SLOT = 'adopted'
 
 const NO_OPERATOR = 'Set the operator first'
 const BAD_OPERATOR = 'Enter the operator as an npub'

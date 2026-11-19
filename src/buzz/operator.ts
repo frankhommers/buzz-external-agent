@@ -1,7 +1,10 @@
+import { ADOPTED_SLOT } from '../constants'
+import { profileOwner, type SignedEvent, verifyEvent } from '../core/events'
 import { decodeNpub, encodeNpub } from '../core/keys'
 import {
   type AcceptContext,
   acceptBlock,
+  type Block,
   type Installed,
   type InstallRequest,
   isSlotId,
@@ -11,13 +14,19 @@ import {
 } from '../core/messages'
 import { verifyNipOa } from '../core/nipoa'
 import { parseHostKey } from '../core/seal'
-import { type OperatorSlot, operatorPubkey, type Store } from '../core/store'
+import {
+  type OperatorRetireRequest,
+  type OperatorSlot,
+  operatorPubkey,
+  type Store,
+} from '../core/store'
 import { renderTemplate, type TemplateVars } from '../core/template'
 import { createPoll } from './poll'
 import type { BlockMessage, Relay } from './relay'
 
 const BAD_OWNER = 'Enter the owner as an npub'
 const BAD_SLOT_ID = 'The slot id may only use lowercase letters, digits and dashes'
+const RESERVED_SLOT_ID = `The slot id "${ADOPTED_SLOT}" is reserved`
 const BAD_LABEL = 'Give the server a label of at most 80 characters'
 const ALREADY_OFFERED = 'This server was already offered'
 const BAD_IMPORT = 'Import must be a JSON list of {"slot", "label", "hostKey"} objects'
@@ -70,11 +79,22 @@ export type InstallRow = {
   commandError?: string
 }
 export type RetireRow = { pubkey: string; slot: string; label: string; owner: string }
+/** A retire request for an existing agent brought into Buzz (no slot). */
+export type AdoptedRetireRow = { pubkey: string; name: string; owner: string }
 export type OperatorView = {
   template: string
+  /** Known owners (npubs) whose DMs are read besides slot owners. */
+  owners: string[]
   slots: SlotRow[]
   installs: InstallRow[]
   retires: RetireRow[]
+  adopted: AdoptedRetireRow[]
+}
+
+export interface OwnerBlocksContext extends AcceptContext {
+  /** The owner whose DM the messages come from. */
+  owner: string
+  readProfile(pubkey: string): Promise<SignedEvent | undefined>
 }
 
 const messageOf = (error: unknown): string =>
@@ -85,6 +105,7 @@ const slotNamed = (store: Store, slot: string): OperatorSlot | undefined =>
 
 const checkSlotId = (slot: string): void => {
   if (!isSlotId(slot)) throw new Error(BAD_SLOT_ID)
+  if (slot === ADOPTED_SLOT) throw new Error(RESERVED_SLOT_ID)
 }
 
 const checkLabel = (label: string): void => {
@@ -192,42 +213,83 @@ export const handoff = (
   return result
 }
 
-/** Tells the agent's owner it is installed or retired, then records that on the slot. */
+/** Tells the agent's owner it is installed or retired, then records that. */
 export const confirm = async (
   relay: Pick<Relay, 'sendBlock'>,
   store: Store,
   kind: 'installed' | 'retired',
   pubkey: string,
 ): Promise<void> => {
-  const requests = kind === 'installed' ? store.requests() : store.retireRequests()
-  const request = requests.find((r) => r.pubkey === pubkey)
-  const slot = request === undefined ? undefined : slotNamed(store, request.slot)
-  const allowed =
-    kind === 'installed' ? slot?.state === 'requested' : RETIRABLE.has(slot?.state ?? 'open')
-  if (request === undefined || slot?.owner === undefined || !allowed)
-    throw new Error(UNKNOWN_REQUEST)
-  const block: Installed | Retired = { v: 1, type: kind, slot: slot.slot, pubkey }
-  await relay.sendBlock(slot.owner, block)
-  store.putSlot({ ...slot, state: kind })
+  if (kind === 'installed') {
+    const request = store.requests().find((r) => r.pubkey === pubkey)
+    const slot = request === undefined ? undefined : slotNamed(store, request.slot)
+    if (slot?.owner === undefined || slot.state !== 'requested') throw new Error(UNKNOWN_REQUEST)
+    const block: Installed = { v: 1, type: 'installed', slot: slot.slot, pubkey }
+    await relay.sendBlock(slot.owner, block)
+    store.putSlot({ ...slot, state: 'installed' })
+    return
+  }
+  const request = store.retireRequests().find((r) => r.pubkey === pubkey && r.retired !== true)
+  if (request === undefined) throw new Error(UNKNOWN_REQUEST)
+  const block: Retired = { v: 1, type: 'retired', slot: request.slot, pubkey }
+  if (request.slot === ADOPTED_SLOT) {
+    // No slot: the request's verified sender is the agent's owner.
+    await relay.sendBlock(request.owner, block)
+  } else {
+    const slot = slotNamed(store, request.slot)
+    if (slot?.owner === undefined || !RETIRABLE.has(slot.state)) throw new Error(UNKNOWN_REQUEST)
+    await relay.sendBlock(slot.owner, block)
+    store.putSlot({ ...slot, state: 'retired' })
+  }
+  store.addRetireRequest({ ...request, retired: true })
 }
 
 const offeredTo = (slot: OperatorSlot | undefined, owner: string): slot is OperatorSlot =>
   slot !== undefined && slot.owner === owner
 
+const profileName = (profile: SignedEvent): string | undefined => {
+  try {
+    const content: unknown = JSON.parse(profile.content)
+    if (typeof content !== 'object' || content === null) return undefined
+    const name = (content as Record<string, unknown>).name
+    return typeof name === 'string' && name.trim() !== '' ? name.trim() : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** The owner named by the agent's own signed profile, if it verifies. */
+const verifiedProfileOwner = (
+  profile: SignedEvent | undefined,
+  pubkey: string,
+): string | undefined =>
+  profile !== undefined && profile.pubkey === pubkey && verifyEvent(profile)
+    ? profileOwner(profile)
+    : undefined
+
 /**
  * Applies requests from one owner's DM. An install-request is listed only when its owner proof
- * verifies, names the sender, and its slot was offered to that sender and is still open for it.
+ * verifies, names the sender, and its slot was offered to that sender and is still open for it;
+ * only the newest install-request per slot counts and replaces older ones. A retire-request needs
+ * a slot offered to the sender with that agent requested on it, or, for an adopted agent, an
+ * agent profile whose verified owner is the sender.
  * Returns what was refused; requests already listed are skipped silently.
  */
-export const applyOwnerBlocks = (
+export const applyOwnerBlocks = async (
   store: Store,
   messages: readonly BlockMessage[],
-  context: AcceptContext & { owner: string },
-): Rejection[] => {
+  context: OwnerBlocksContext,
+): Promise<Rejection[]> => {
   const rejected: Rejection[] = []
-  for (const { sender, block } of messages) {
-    if (!acceptBlock(block, sender, context)) continue
+  const accepted = messages.filter(({ sender, block }) => acceptBlock(block, sender, context))
+  // An owner who set a slot up again (new key) superseded the earlier request for it.
+  const newestInstall = new Map<string, Block>()
+  for (const { block } of accepted)
+    if (block.type === 'install-request') newestInstall.set(block.slot, block)
+
+  for (const { sender, block } of accepted) {
     if (block.type !== 'install-request' && block.type !== 'retire-request') continue
+    if (block.type === 'install-request' && newestInstall.get(block.slot) !== block) continue
     const refuse = (reason: string): void => {
       rejected.push({ type: block.type, slot: block.slot, pubkey: block.pubkey, reason })
     }
@@ -246,15 +308,23 @@ export const applyOwnerBlocks = (
       else if (!offeredTo(slot, sender) || !REQUESTABLE.has(slot.state))
         refuse('not a server offered to this owner')
       else {
-        store.addRequest(block)
+        store.putSlotRequest(block)
         store.putSlot({ ...slot, state: 'requested' })
       }
+    } else if (block.slot === ADOPTED_SLOT) {
+      const profile = await context.readProfile(block.pubkey)
+      const owner = verifiedProfileOwner(profile, block.pubkey)
+      const name = profile === undefined ? undefined : profileName(profile)
+      if (owner === undefined) refuse('agent profile missing or unverified')
+      else if (owner !== sender) refuse('agent is owned by someone else')
+      else
+        store.addRetireRequest({ ...block, owner: sender, ...(name === undefined ? {} : { name }) })
     } else if (!offeredTo(slot, sender) || !RETIRABLE.has(slot.state)) {
       refuse('not a server offered to this owner')
     } else if (!store.requests().some((r) => r.pubkey === block.pubkey && r.slot === slot.slot)) {
       refuse('not an agent requested on this server')
     } else {
-      store.addRetireRequest(block)
+      store.addRetireRequest({ ...block, owner: sender })
     }
   }
   return rejected
@@ -263,8 +333,12 @@ export const applyOwnerBlocks = (
 const npubOf = (pubkey: string | undefined): string =>
   pubkey === undefined ? '' : encodeNpub(pubkey)
 
+const isOpenAdopted = (request: OperatorRetireRequest): boolean =>
+  request.slot === ADOPTED_SLOT && request.retired !== true
+
 export const buildOperatorView = (store: Store): OperatorView => {
-  const template = store.settings().template ?? ''
+  const settings = store.settings()
+  const template = settings.template ?? ''
   const slots = store.slots()
   const byId = new Map(slots.map((s) => [s.slot, s]))
   const installs: InstallRow[] = []
@@ -285,8 +359,9 @@ export const buildOperatorView = (store: Store): OperatorView => {
     }
   }
   const retires: RetireRow[] = []
-  for (const request of store.retireRequests()) {
-    const slot = byId.get(request.slot)
+  const retireRequests = store.retireRequests()
+  for (const request of retireRequests) {
+    const slot = request.slot === ADOPTED_SLOT ? undefined : byId.get(request.slot)
     if (slot === undefined || !RETIRABLE.has(slot.state)) continue
     retires.push({
       pubkey: request.pubkey,
@@ -297,6 +372,7 @@ export const buildOperatorView = (store: Store): OperatorView => {
   }
   return {
     template,
+    owners: (settings.owners ?? []).map(encodeNpub),
     slots: slots.map((s) => ({
       slot: s.slot,
       label: s.label,
@@ -306,6 +382,11 @@ export const buildOperatorView = (store: Store): OperatorView => {
     })),
     installs,
     retires,
+    adopted: retireRequests.filter(isOpenAdopted).map((request) => ({
+      pubkey: request.pubkey,
+      name: request.name ?? encodeNpub(request.pubkey),
+      owner: encodeNpub(request.owner),
+    })),
   }
 }
 
@@ -323,10 +404,15 @@ export interface Operator {
   offerOpen(slot: string, owner: string): Promise<void>
   /** Saves the slots from a JSON list as open; returns how many were added. */
   importSlots(text: string): Promise<number>
+  /** Saves known owners from npubs separated by spaces, commas or lines; rejects anything else. */
+  saveOwners(text: string): Promise<void>
   /** Saves the command template; rejects unknown placeholders. */
   saveTemplate(template: string): Promise<void>
   confirm(kind: 'installed' | 'retired', pubkey: string): Promise<void>
-  /** Reads the DM with every owner of an active slot. No-op unless the viewer is the operator. */
+  /**
+   * Reads the DM with every owner of an active slot and every known owner.
+   * No-op unless the viewer is the operator.
+   */
   poll(): Promise<void>
   /** `poll`, logging a failure instead of rejecting; the next tick retries. */
   pollSafely(): Promise<void>
@@ -363,18 +449,24 @@ export const createOperator = (deps: OperatorDeps): Operator => {
     }
     const { store, viewer, isOperator } = opened
     if (!isOperator) return
-    const owners = new Set(
-      store
+    const owners = new Set([
+      ...store
         .slots()
         .filter((s) => ACTIVE.has(s.state))
         .flatMap((s) => (s.owner === undefined ? [] : [s.owner])),
-    )
+      ...(store.settings().owners ?? []),
+    ])
     const failures: string[] = []
     for (const owner of owners) {
       try {
         const messages = await deps.relay.readBlocks(owner)
-        const context = { operator: viewer, viewer, owner }
-        for (const r of applyOwnerBlocks(store, messages, context)) {
+        const context = {
+          operator: viewer,
+          viewer,
+          owner,
+          readProfile: (pubkey: string) => deps.relay.readProfile(pubkey),
+        }
+        for (const r of await applyOwnerBlocks(store, messages, context)) {
           const key = `${r.type}:${r.slot}:${r.pubkey}:${r.reason}`
           if (warned.has(key)) continue
           warned.add(key)
@@ -422,6 +514,22 @@ export const createOperator = (deps: OperatorDeps): Operator => {
       for (const slot of slots) store.putSlot(slot)
       notify()
       return slots.length
+    },
+
+    saveOwners: async (text) => {
+      const store = await openAsOperator()
+      const owners: string[] = []
+      for (const token of text.split(/[\s,]+/).filter((t) => t !== '')) {
+        let owner: string
+        try {
+          owner = decodeNpub(token)
+        } catch {
+          throw new Error(`Not an npub: ${token}`)
+        }
+        if (!owners.includes(owner)) owners.push(owner)
+      }
+      store.setSettings({ ...store.settings(), owners })
+      notify()
     },
 
     saveTemplate: async (template) => {

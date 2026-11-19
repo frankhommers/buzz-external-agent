@@ -26,7 +26,16 @@ export type OperatorSlot = {
 
 export type AgentStatus = 'awaiting-install' | 'installed' | 'retire-requested' | 'retired'
 
-export type Settings = { operator?: string; template?: string }
+/** A retire request as the operator keeps it: with its sender and, for adopted agents, name. */
+export type OperatorRetireRequest = RetireRequest & {
+  owner: string
+  name?: string
+  /** Set once the operator confirmed it (for adopted agents, which have no slot state). */
+  retired?: true
+}
+
+/** `owners`: known owner pubkeys (hex) whose DMs the operator reads besides slot owners. */
+export type Settings = { operator?: string; template?: string; owners?: string[] }
 
 /** The configured operator as hex, or undefined when unset or not a valid key. */
 export const operatorPubkey = (settings: Settings): string | undefined => {
@@ -58,8 +67,10 @@ export interface Store {
   putSlot(slot: OperatorSlot): void
   requests(): InstallRequest[]
   addRequest(request: InstallRequest): void
-  retireRequests(): RetireRequest[]
-  addRetireRequest(request: RetireRequest): void
+  /** Stores the request as the only one for its slot. */
+  putSlotRequest(request: InstallRequest): void
+  retireRequests(): OperatorRetireRequest[]
+  addRetireRequest(request: OperatorRetireRequest): void
 }
 
 const SECRET_PATTERN = /nsec1[02-9ac-hj-np-z]{20,}/i
@@ -134,6 +145,11 @@ export const createStore = (storage: Storage, scope: { origin: string; viewer: s
       if (typeof value.template === 'string') {
         settings.template = value.template
       }
+      if (Array.isArray(value.owners)) {
+        settings.owners = value.owners.filter(
+          (owner): owner is string => typeof owner === 'string' && isHex64(owner),
+        )
+      }
       return settings
     },
     setSettings: (settings) => write('settings', settings),
@@ -172,12 +188,19 @@ export const createStore = (storage: Storage, scope: { origin: string; viewer: s
         'requests',
         upsert(readList<InstallRequest>('requests'), request, (r) => r.pubkey === request.pubkey),
       ),
-    retireRequests: () => readList<RetireRequest>('retire-requests'),
+    putSlotRequest: (request) =>
+      write('requests', [
+        ...readList<InstallRequest>('requests').filter(
+          (r) => r.slot !== request.slot && r.pubkey !== request.pubkey,
+        ),
+        request,
+      ]),
+    retireRequests: () => readList<OperatorRetireRequest>('retire-requests'),
     addRetireRequest: (request) =>
       write(
         'retire-requests',
         upsert(
-          readList<RetireRequest>('retire-requests'),
+          readList<OperatorRetireRequest>('retire-requests'),
           request,
           (r) => r.pubkey === request.pubkey,
         ),

@@ -1,8 +1,13 @@
 import { describe, expect, test } from 'bun:test'
 import { STORAGE_PREFIX } from '../../src/constants'
 import type { SignedEvent } from '../../src/core/events'
-import type { InstallRequest, RetireRequest, SlotOffer } from '../../src/core/messages'
-import { createStore, type OperatorSlot, type PendingSetup } from '../../src/core/store'
+import type { InstallRequest, SlotOffer } from '../../src/core/messages'
+import {
+  createStore,
+  type OperatorRetireRequest,
+  type OperatorSlot,
+  type PendingSetup,
+} from '../../src/core/store'
 import { MemoryStorage } from '../helpers/memory-storage'
 
 const scope = { origin: 'wss://relay.example', viewer: 'a'.repeat(64) }
@@ -114,18 +119,44 @@ describe('createStore', () => {
     expect(store.requests().map((r) => r.pubkey)).toEqual([hex('9'), hex('a')])
   })
 
-  test('retire requests dedupe by pubkey', () => {
+  test('retire requests keep their sender and dedupe by pubkey', () => {
     const store = createStore(new MemoryStorage(), scope)
-    const r = (pubkey: string): RetireRequest => ({
+    const r = (pubkey: string, owner = hex('8')): OperatorRetireRequest => ({
       v: 1,
       type: 'retire-request',
       slot: 'one',
       pubkey,
+      owner,
     })
     store.addRetireRequest(r(hex('9')))
-    store.addRetireRequest(r(hex('9')))
+    store.addRetireRequest(r(hex('9'), hex('7')))
     store.addRetireRequest(r(hex('a')))
-    expect(store.retireRequests().length).toBe(2)
+    expect(store.retireRequests()).toEqual([r(hex('9'), hex('7')), r(hex('a'))])
+  })
+
+  test('putSlotRequest keeps only the newest request for a slot', () => {
+    const store = createStore(new MemoryStorage(), scope)
+    store.addRequest({ ...request(hex('8')), slot: 'two' })
+    store.putSlotRequest(request(hex('9')))
+    store.putSlotRequest(request(hex('a')))
+    expect(store.requests().map((r) => [r.slot, r.pubkey])).toEqual([
+      ['two', hex('8')],
+      ['one', hex('a')],
+    ])
+    store.putSlotRequest(request(hex('a')))
+    expect(store.requests()).toHaveLength(2)
+  })
+
+  test('known owners are kept as hex in settings; anything else is dropped', () => {
+    const storage = new MemoryStorage()
+    const store = createStore(storage, scope)
+    store.setSettings({ owners: [hex('8'), hex('9')] })
+    expect(store.settings()).toEqual({ owners: [hex('8'), hex('9')] })
+    const key = storage.keys()[0] ?? ''
+    storage.setItem(key, JSON.stringify({ owners: [hex('8'), 'npub1x', 3] }))
+    expect(store.settings()).toEqual({ owners: [hex('8')] })
+    storage.setItem(key, JSON.stringify({ owners: 'nope' }))
+    expect(store.settings()).toEqual({})
   })
 
   test('refuses secret material, including uppercase', () => {

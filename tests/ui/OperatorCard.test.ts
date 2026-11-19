@@ -16,6 +16,7 @@ const html = (element: unknown): string => renderToStaticMarkup(element as React
 
 const view: OperatorView = {
   template: 'deploy {name}',
+  owners: ['npub1known'],
   slots: [
     {
       slot: 'vps-1',
@@ -42,6 +43,7 @@ const view: OperatorView = {
     },
   ],
   retires: [{ pubkey: 'b'.repeat(64), slot: 'vps-3', label: 'Three', owner: 'npub1owner' }],
+  adopted: [{ pubkey: 'c'.repeat(64), name: 'Old agent', owner: 'npub1owner' }],
 }
 
 const noop = (): void => {}
@@ -55,6 +57,7 @@ const props = (overrides: Partial<OperatorPanelProps> = {}): OperatorPanelProps 
   onOfferOpen: noop,
   onImport: noop,
   onSaveTemplate: noop,
+  onSaveOwners: noop,
   onDownload: noop,
   onCopy: noop,
   onConfirm: noop,
@@ -90,6 +93,28 @@ test('lists slots with their state, requests with handoff actions, and retire re
     'Import',
   ])
     expect(out).toContain(text)
+})
+
+test('lists known owners and adopted retire requests with a Retired button', () => {
+  const retired: string[] = []
+  const out = html(OperatorPanel(react, props()))
+  expect(out).toContain('Known owners')
+  expect(out).toContain('npub1known')
+  expect(out).toContain('Existing agent Old agent — owner npub1owner')
+  const tree = OperatorPanel(
+    { ...react, createElement: (type, p, ...children) => ({ type, props: p, children }) },
+    props({ onConfirm: (kind, pubkey) => void retired.push(`${kind} ${pubkey}`) }),
+  )
+  const buttons: { props: { onClick(): void }; children: unknown[] }[] = []
+  const walk = (node: unknown): void => {
+    if (node === null || typeof node !== 'object') return
+    const n = node as { type: unknown; props: { onClick(): void }; children: unknown[] }
+    if (n.type === 'button') buttons.push(n)
+    for (const child of n.children ?? []) walk(child)
+  }
+  walk(tree)
+  for (const b of buttons.filter((b) => b.children.includes('Retired'))) b.props.onClick()
+  expect(retired).toEqual([`retired ${'b'.repeat(64)}`, `retired ${'c'.repeat(64)}`])
 })
 
 test('a template error is shown instead of the command', () => {
