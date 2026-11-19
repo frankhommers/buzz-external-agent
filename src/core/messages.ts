@@ -1,4 +1,3 @@
-import { z } from 'zod'
 import { BLOCK_INFO } from '../constants'
 import { isHex64 } from './keys'
 import { type NipOaTag, parseNipOaTag } from './nipoa'
@@ -13,8 +12,39 @@ const FENCE_PATTERN = new RegExp(
   'g',
 )
 const MAX_HOST_KEY_LENGTH = 512
+const MAX_LABEL_LENGTH = 80
+const MAX_NAME_LENGTH = 80
 const NO_CONTROL_PATTERN = /^[^\p{Cc}]*$/u
 const TITLE = 'Self-hosted agents'
+
+export type SlotOffer = {
+  v: 1
+  type: 'slot-offer'
+  slot: string
+  label: string
+  hostKey: string
+  community: string
+}
+export type InstallRequest = {
+  v: 1
+  type: 'install-request'
+  slot: string
+  pubkey: string
+  name: string
+  auth: NipOaTag
+  sealed: string
+}
+export type RetireRequest = { v: 1; type: 'retire-request'; slot: string; pubkey: string }
+export type Retired = { v: 1; type: 'retired'; slot: string; pubkey: string }
+export type Installed = { v: 1; type: 'installed'; slot: string; pubkey: string }
+export type Block = SlotOffer | InstallRequest | RetireRequest | Retired | Installed
+
+type Check = (value: unknown) => boolean
+
+const isString = (value: unknown): value is string => typeof value === 'string'
+
+// Unicode code points, as the previous schema library counted string lengths.
+const codePoints = (value: string): number => [...value].length
 
 const isValidHostKey = (value: string): boolean => {
   try {
@@ -25,84 +55,66 @@ const isValidHostKey = (value: string): boolean => {
   }
 }
 
-const buildBlockSchema = () => {
-  z.config({ jitless: true })
-  const slotSchema = z.string().regex(SLOT_PATTERN)
-  const pubkeySchema = z.string().refine(isHex64)
-  const authSchema = z.custom<NipOaTag>((value) => parseNipOaTag(value) !== undefined)
-  const sealedSchema = z
-    .string()
-    .startsWith(AGE_ARMOR_HEADER)
-    .refine((value) => new TextEncoder().encode(value).length <= MAX_SEALED_BYTES)
-  const communitySchema = z.string().refine((value) => {
-    try {
-      return new URL(value).protocol === 'wss:'
-    } catch {
-      return false
-    }
-  })
-
-  const slotOfferSchema = z.strictObject({
-    v: z.literal(1),
-    type: z.literal('slot-offer'),
-    slot: slotSchema,
-    label: z.string().max(80),
-    hostKey: z.string().max(MAX_HOST_KEY_LENGTH).refine(isValidHostKey),
-    community: communitySchema,
-  })
-
-  const installRequestSchema = z.strictObject({
-    v: z.literal(1),
-    type: z.literal('install-request'),
-    slot: slotSchema,
-    pubkey: pubkeySchema,
-    name: z.string().min(1).max(80).regex(NO_CONTROL_PATTERN),
-    auth: authSchema,
-    sealed: sealedSchema,
-  })
-
-  const retireRequestSchema = z.strictObject({
-    v: z.literal(1),
-    type: z.literal('retire-request'),
-    slot: slotSchema,
-    pubkey: pubkeySchema,
-  })
-
-  const retiredSchema = z.strictObject({
-    v: z.literal(1),
-    type: z.literal('retired'),
-    slot: slotSchema,
-    pubkey: pubkeySchema,
-  })
-
-  const installedSchema = z.strictObject({
-    v: z.literal(1),
-    type: z.literal('installed'),
-    slot: slotSchema,
-    pubkey: pubkeySchema,
-  })
-
-  const block = z.discriminatedUnion('type', [
-    slotOfferSchema,
-    installRequestSchema,
-    retireRequestSchema,
-    retiredSchema,
-    installedSchema,
-  ])
-  return block
+const isWssUrl = (value: string): boolean => {
+  try {
+    return new URL(value).protocol === 'wss:'
+  } catch {
+    return false
+  }
 }
 
-let cachedSchema: ReturnType<typeof buildBlockSchema> | undefined
-// Built lazily so module evaluation stays pure; jitless avoids `new Function` under a strict CSP.
-const blockSchema = () => (cachedSchema ??= buildBlockSchema())
+const isSlot: Check = (value) => isString(value) && SLOT_PATTERN.test(value)
+const isPubkey: Check = (value) => isString(value) && isHex64(value)
+const isLabel: Check = (value) => isString(value) && codePoints(value) <= MAX_LABEL_LENGTH
+const isName: Check = (value) =>
+  isString(value) &&
+  codePoints(value) >= 1 &&
+  codePoints(value) <= MAX_NAME_LENGTH &&
+  NO_CONTROL_PATTERN.test(value)
+const isHostKey: Check = (value) =>
+  isString(value) && codePoints(value) <= MAX_HOST_KEY_LENGTH && isValidHostKey(value)
+const isCommunity: Check = (value) => isString(value) && isWssUrl(value)
+const isAuth: Check = (value) => parseNipOaTag(value) !== undefined
+const isSealed: Check = (value) =>
+  isString(value) &&
+  value.startsWith(AGE_ARMOR_HEADER) &&
+  new TextEncoder().encode(value).length <= MAX_SEALED_BYTES
 
-type BlockSchema = ReturnType<typeof buildBlockSchema>
-export type Block = z.infer<BlockSchema>
-export type SlotOffer = Extract<Block, { type: 'slot-offer' }>
-export type InstallRequest = Extract<Block, { type: 'install-request' }>
-export type RetireRequest = Extract<Block, { type: 'retire-request' }>
-export type Retired = Extract<Block, { type: 'retired' }>
-export type Installed = Extract<Block, { type: 'installed' }>
+// Every key besides `v` and `type`, per block type. Blocks are strict: no other keys.
+const FIELDS: Record<Block['type'], Record<string, Check>> = {
+  'slot-offer': { slot: isSlot, label: isLabel, hostKey: isHostKey, community: isCommunity },
+  'install-request': {
+    slot: isSlot,
+    pubkey: isPubkey,
+    name: isName,
+    auth: isAuth,
+    sealed: isSealed,
+  },
+  'retire-request': { slot: isSlot, pubkey: isPubkey },
+  retired: { slot: isSlot, pubkey: isPubkey },
+  installed: { slot: isSlot, pubkey: isPubkey },
+}
+
+const isBlockType = (value: unknown): value is Block['type'] =>
+  isString(value) && Object.hasOwn(FIELDS, value)
+
+const toBlock = (value: unknown): Block | undefined => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
+  const input = value as Record<string, unknown>
+  if (!Object.hasOwn(input, 'v') || input.v !== 1) return undefined
+  if (!Object.hasOwn(input, 'type') || !isBlockType(input.type)) return undefined
+  const fields = FIELDS[input.type]
+  // Object.keys includes an own `__proto__` key as JSON.parse creates one.
+  for (const key of Object.keys(input)) {
+    if (key !== 'v' && key !== 'type' && !Object.hasOwn(fields, key)) return undefined
+  }
+  const block: Record<string, unknown> = { v: 1, type: input.type }
+  for (const [key, check] of Object.entries(fields)) {
+    if (!Object.hasOwn(input, key) || !check(input[key])) return undefined
+    block[key] = input[key]
+  }
+  return block as Block
+}
 
 const shortKey = (pubkey: string): string => pubkey.slice(0, 8)
 
@@ -137,8 +149,7 @@ const parseOne = (raw: string): Block | undefined => {
   } catch {
     return undefined
   }
-  const result = blockSchema().safeParse(json)
-  return result.success ? result.data : undefined
+  return toBlock(json)
 }
 
 export const parseBlocks = (text: string): Block[] =>

@@ -44,6 +44,11 @@ describe('plugin build', () => {
     expect(source).not.toMatch(/^\s*export\s[^;]*\sfrom\s/m)
   })
 
+  test('plugin.js does not write zod globals', () => {
+    const source = readFileSync(resolve(pluginDir, 'plugin.js'), 'utf8')
+    expect(source).not.toContain('globalThis.__zod')
+  })
+
   test('plugin.js exports inject and apply', async () => {
     const mod = await import(resolve(pluginDir, 'plugin.js'))
     expect(Array.isArray(mod.inject)).toBe(true)

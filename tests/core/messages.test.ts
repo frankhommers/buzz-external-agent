@@ -97,6 +97,33 @@ describe('encode/parse', () => {
     for (const b of bad) expect(parseBlocks(fence(b))).toEqual([])
     expect(parseBlocks(fence('{not json'))).toEqual([])
   })
+
+  test('rejects wrong shapes and own __proto__ keys', () => {
+    const body = `"v":1,"type":"retired","slot":"vps-1","pubkey":"${agent}"`
+    expect(parseBlocks(fence(`{${body}}`))).toEqual([retired])
+    for (const raw of [
+      `{${body},"__proto__":{}}`,
+      `{${body},"__proto__":null}`,
+      `{"v":1,"type":"retired","slot":"vps-1"}`,
+      `{"v":"1","type":"retired","slot":"vps-1","pubkey":"${agent}"}`,
+      `{"v":1,"type":"nope","slot":"vps-1","pubkey":"${agent}"}`,
+      `{"v":1,"type":"retired","slot":null,"pubkey":"${agent}"}`,
+      `{"v":1,"type":"retired","slot":5,"pubkey":"${agent}"}`,
+      `{"v":1,"type":"retired","slot":"vps-1","pubkey":"${agent.toUpperCase()}"}`,
+      '[1]',
+      'null',
+      '"text"',
+    ]) {
+      expect(parseBlocks(fence(raw))).toEqual([])
+    }
+  })
+
+  test('label and name limits count Unicode code points', () => {
+    expect(parseBlocks(fence({ ...offer, label: '😀'.repeat(80) }))).toHaveLength(1)
+    expect(parseBlocks(fence({ ...offer, label: '😀'.repeat(81) }))).toEqual([])
+    expect(parseBlocks(fence({ ...install, name: '😀'.repeat(80) }))).toHaveLength(1)
+    expect(parseBlocks(fence({ ...install, name: '😀'.repeat(81) }))).toEqual([])
+  })
 })
 
 describe('acceptBlock', () => {
