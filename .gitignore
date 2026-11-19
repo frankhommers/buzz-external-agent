@@ -8,3 +8,5 @@ __pycache__/
 /*.py
 /legacy/
 .superpowers/
+node_modules/
+dist/
