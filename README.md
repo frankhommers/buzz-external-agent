@@ -12,7 +12,7 @@ retires agents running on your own servers.
 - **Owners**: Buzz users who want agents that run on a server instead of their desktop.
   Owners need no deployment knowledge.
 - **Operators**: the one person who provisions and maintains the servers with their own
-  tools (Ansible, scripts, anything). The plugin hands the operator what they need.
+  own tools. The plugin hands the operator what they need.
 
 Any agent that reads `BUZZ_PRIVATE_KEY` and `BUZZ_AUTH_TAG` (and `BUZZ_RELAY_URL`) from
 its environment can be used. The plugin never contacts a server itself.
@@ -41,7 +41,7 @@ Or build it: `bun install && bun run build`, then add `dist/plugin`.
 
 - **Setup**: the owner opens Settings → Self-hosted agents and pastes the operator's npub.
   The operator pastes their own npub as Operator in Settings → Self-hosted agents to get the
-  operator view, Settings → "Self-hosted agents — operator" (listed only for the operator).
+  operator view, Settings → **Agent servers** (listed only for the operator).
 - **Offer**: the operator adds a server (slot id, label, SSH host public key) and offers
   it to an owner. The owner sees it under "Servers offered to you".
 - **Create** (owner): New agent, type **Self-hosted agent**, choose an offered server. The
@@ -110,17 +110,18 @@ sudo ./install-agent-key.sh --sealed server-1.age --pubkey <hex> \
 
 It prints `{"ok":true,...}` or `{"ok":false,"error":"..."}`.
 
-## Example: Ansible pattern
+## Example: command template
 
-Keep your own playbooks in a private repository. A typical pattern: the operator template is
+The operator can set a command template that turns each install request into a ready-to-run
+command for whatever tooling they use, for example
 
 ```text
-ansible-playbook install-agent.yml -l {host} -e agent_name={name} -e sealed_file={file} -e pubkey={pubkey} -e auth_tag={auth_tag}
+./deploy-agent {host} {file} {pubkey} {auth_tag}
 ```
 
-and the playbook copies the `.age` file to the server, runs `install-agent-key.sh` with
-`--host-key /etc/ssh/ssh_host_ed25519_key`, and restarts the agent service. The inventory
-host name matches the slot's server label.
+where `deploy-agent` is the operator's own script: it copies the `.age` file to the server,
+runs `install-agent-key.sh` with `--host-key /etc/ssh/ssh_host_ed25519_key`, and restarts the
+agent service.
 
 ## Old Buzz
 

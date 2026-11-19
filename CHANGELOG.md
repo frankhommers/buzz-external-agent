@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.3
+
+- The operator settings card is now called **Agent servers**, so it no longer looks like a
+  second "Self-hosted agents" entry in the Settings list.
+- The command template placeholder and the docs use a neutral example instead of a specific
+  deployment tool.
+
 ## 1.0.2
 
 - **Take over** in Bring into Buzz: an agent whose record names another runtime (for example
