@@ -185,6 +185,16 @@ describe('buildOwnerView', () => {
     })
   })
 
+  test('keeps offering a slot whose setup was never sent, hides it once sent', () => {
+    const store = newStore()
+    store.addOffer(offer('vps-1'))
+    store.putPending(pendingFor('vps-1', agentA))
+    const offers = () => buildOwnerView(store, [], COMMUNITY).offers
+    expect(offers()).toEqual([{ slot: 'vps-1', label: 'Server vps-1' }])
+    store.setStatus(agentA, 'awaiting-install')
+    expect(offers()).toEqual([])
+  })
+
   test('an unsent setup on this device is not offered Retire', () => {
     const store = newStore()
     store.putPending(pendingFor('vps-1', agentA))
@@ -216,7 +226,6 @@ const setup = (options: Fake = {}) => {
     readOwnRecords: async () => ({ ok: true, records: new Map() }),
     readProfile: async () => undefined,
     publishRecord: async () => {},
-    publishSigned: async () => {},
     sendBlock: async (to, block) => {
       sentBlocks.push({ to, block })
     },

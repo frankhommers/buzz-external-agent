@@ -145,7 +145,6 @@ const fakeRelay = (options: FakeOptions = {}) => {
     readOwnRecords: async () => ({ ok: true, records: new Map() }),
     readProfile: async (pubkey) => (options.profiles ?? profilesOwnedBy(ownerSecret))[pubkey],
     publishRecord: async () => {},
-    publishSigned: async () => {},
     sendBlock: async (to, block) => {
       if (options.sendError) throw options.sendError
       sent.push({ to, block })

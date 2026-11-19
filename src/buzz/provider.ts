@@ -5,6 +5,7 @@ import type { InstallRequest } from '../core/messages'
 import { type NipOaTag, parseNipOaTag, verifyNipOa } from '../core/nipoa'
 import { parseHostKey, sealSecret } from '../core/seal'
 import type { PendingSetup, Store } from '../core/store'
+import type { publishAsAgent } from './agent-publish'
 import { receiveOwnRequest } from './operator'
 import type { Relay } from './relay'
 import type { AgentType, CreateConfigurationProps, Host, RemoteAgentType } from './types'
@@ -18,6 +19,8 @@ export interface ProviderDeps {
   host: Pick<Host, 'prepareRemoteAgentAuthorization'>
   /** Wall-clock Unix milliseconds. */
   now(): number
+  /** Publishes an agent-signed event on a connection signed in as the agent. */
+  publishAsAgent: typeof publishAsAgent
   /** The New agent dialog's server picker. */
   createConfiguration?: (props: CreateConfigurationProps<SelfHostedConfig>) => unknown
 }
@@ -39,6 +42,8 @@ const PROFILE_HELD = "Change the name or avatar on the server; this agent's key 
 const RETIRE_FIRST = 'Retire this agent first, then delete it again'
 const OTHER_COMMUNITY = "Switch to this agent's community in Buzz, then try again"
 const RETIRING = 'This agent is retired or being retired; it cannot be installed again'
+const NOT_PUBLISHED =
+  'The agent profile could not be published; remove this unfinished agent and try again'
 
 const operatorOf = (store: Store): string => {
   const operator = store.settings().operator?.trim()
@@ -116,8 +121,11 @@ export const createProvider = (deps: ProviderDeps): RemoteAgentType => {
         }
         const status = store.statusOf(existing.pubkey)
         if (status !== undefined && status !== 'awaiting-install') throw new Error(SLOT_IN_USE)
-        // A retry after a failed publish: the same signed profile, published again.
-        await deps.relay.publishSigned(existing.profile)
+        // A retry: the key was dropped after the first attempt, so the profile cannot be
+        // published again as the agent. It counts only if that attempt reached the relay.
+        if ((await deps.relay.readProfile(existing.pubkey)) === undefined) {
+          throw new Error(NOT_PUBLISHED)
+        }
         return resultOf(existing)
       }
       if (!isValidName(name)) throw new Error(BAD_NAME)
@@ -136,7 +144,6 @@ export const createProvider = (deps: ProviderDeps): RemoteAgentType => {
           createdAt: Math.floor(deps.now() / MS_PER_SECOND),
         })
         const sealed = await sealSecret(secret, host)
-        secret.fill(0)
         const pending: PendingSetup = {
           slot,
           community,
@@ -149,11 +156,12 @@ export const createProvider = (deps: ProviderDeps): RemoteAgentType => {
           ...withPicture(picture),
         }
         // Stored before the profile goes public, so a published key is always one we hold
-        // sealed; if publishing fails, a retry republishes this profile.
+        // sealed; if publishing fails, a retry checks whether the profile reached the relay.
         store.putPending(pending)
-        await deps.relay.publishSigned(profile)
+        await deps.publishAsAgent({ relay: community, secret, auth, event: profile, signal })
         return resultOf(pending)
       } finally {
+        // Only now: publishing signs the relay sign-in with the agent key.
         secret.fill(0)
       }
     },

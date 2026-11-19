@@ -1,3 +1,4 @@
+import { publishAsAgent } from './buzz/agent-publish'
 import { createOperator } from './buzz/operator'
 import { createOwner } from './buzz/owner'
 import { POLL_INTERVAL_MS } from './buzz/poll'
@@ -34,6 +35,7 @@ export function apply(ctx: PluginCtx): void {
       storeFor,
       host: ctx.host,
       now: () => Date.now(),
+      publishAsAgent,
       createConfiguration: createConfiguration({ react: ctx.react, owner }),
     }),
   )

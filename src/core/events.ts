@@ -23,6 +23,7 @@ export type AgentRecord = {
 type RecordInput = { pubkey: string; name: string; picture?: string }
 
 const PROFILE_KIND = 0
+const AUTH_KIND = 22242
 const OWNED_TAGS = new Set(['d', 'runtime', 'client-id'])
 
 const eventId = (e: Omit<SignedEvent, 'id' | 'sig'>): string =>
@@ -33,6 +34,28 @@ const eventId = (e: Omit<SignedEvent, 'id' | 'sig'>): string =>
       ),
     ),
   )
+
+const signEvent = (secret: Uint8Array, unsigned: Omit<SignedEvent, 'id' | 'sig'>): SignedEvent => {
+  const id = eventId(unsigned)
+  const sig = bytesToHex(schnorr.sign(hexToBytes(id), secret))
+  return { id, ...unsigned, sig }
+}
+
+/** NIP-42 sign-in for `relay`'s `challenge`, carrying the owner's NIP-OA proof. */
+export const buildAuthEvent = (
+  secret: Uint8Array,
+  relay: string,
+  challenge: string,
+  auth: NipOaTag,
+  createdAt: number,
+): SignedEvent =>
+  signEvent(secret, {
+    pubkey: publicKeyHex(secret),
+    created_at: createdAt,
+    kind: AUTH_KIND,
+    tags: [['relay', relay], ['challenge', challenge], [...auth]],
+    content: '',
+  })
 
 export const buildAgentProfile = (input: {
   secret: Uint8Array
@@ -47,16 +70,13 @@ export const buildAgentProfile = (input: {
     ...(input.picture === undefined ? {} : { picture: input.picture }),
     bot: true,
   })
-  const unsigned = {
+  return signEvent(input.secret, {
     pubkey: publicKeyHex(input.secret),
     created_at: input.createdAt,
     kind: PROFILE_KIND,
     tags: [[...input.auth]],
     content,
-  }
-  const id = eventId(unsigned)
-  const sig = bytesToHex(schnorr.sign(hexToBytes(id), input.secret))
-  return { id, ...unsigned, sig }
+  })
 }
 
 export const verifyEvent = (e: SignedEvent): boolean => {

@@ -176,15 +176,6 @@ describe('publishRecord', () => {
   })
 })
 
-describe('publishSigned', () => {
-  test('is an explicit stub', async () => {
-    const { ctx } = fakeCtx()
-    await expect(createRelay(ctx).publishSigned({} as never)).rejects.toThrow(
-      'Publishing a pre-signed event is not supported yet',
-    )
-  })
-})
-
 const offer: Block = {
   v: 1,
   type: 'retired',

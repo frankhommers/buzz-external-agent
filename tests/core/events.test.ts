@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { RUNTIME } from '../../src/constants'
 import {
   buildAgentProfile,
+  buildAuthEvent,
   mergeAgentRecord,
   newAgentRecord,
   profileOwner,
@@ -26,6 +27,23 @@ const profile = (conditions = 'kind=0', picture?: string): SignedEvent =>
     auth: signNipOaForTests(owner, pubkey, conditions),
     createdAt,
   })
+
+describe('buildAuthEvent', () => {
+  test('builds a NIP-42 event for the relay and challenge, carrying the owner proof', () => {
+    const auth = signNipOaForTests(owner, pubkey)
+    const event = buildAuthEvent(secret, 'wss://buzz.test', 'challenge-1', auth, createdAt)
+    expect(event.kind).toBe(22242)
+    expect(event.pubkey).toBe(pubkey)
+    expect(event.created_at).toBe(createdAt)
+    expect(event.content).toBe('')
+    expect(event.tags).toEqual([
+      ['relay', 'wss://buzz.test'],
+      ['challenge', 'challenge-1'],
+      [...auth],
+    ])
+    expect(verifyEvent(event)).toBe(true)
+  })
+})
 
 describe('buildAgentProfile', () => {
   test('builds a verifying kind 0 event with one auth tag', () => {

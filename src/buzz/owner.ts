@@ -114,6 +114,12 @@ export const applyOperatorBlocks = (
   }
 }
 
+/** A slot whose setup was never sent stays offered, so the owner can retry or delete it. */
+const isSent = (store: Store, slot: string): boolean => {
+  const pending = store.pendingFor(slot)
+  return pending !== undefined && store.statusOf(pending.pubkey) !== undefined
+}
+
 const ourAgents = (agents: readonly AgentSummary[]): AgentSummary[] =>
   agents.filter((agent) => agent.type === RUNTIME)
 
@@ -125,7 +131,7 @@ export const buildOwnerView = (
   operator: store.settings().operator ?? '',
   offers: store
     .offers()
-    .filter((offer) => offer.community === community && store.pendingFor(offer.slot) === undefined)
+    .filter((offer) => offer.community === community && !isSent(store, offer.slot))
     .map(({ slot, label }) => ({ slot, label })),
   agents: ourAgents(agents).map((agent) => {
     const { text, ...actions } = statusView(store, agent.pubkey, STATUS_TEXT)

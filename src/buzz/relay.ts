@@ -32,7 +32,6 @@ export interface Relay {
   readOwnRecords(): Promise<OwnRecords>
   readProfile(pubkey: string): Promise<SignedEvent | undefined>
   publishRecord(record: AgentRecord): Promise<void>
-  publishSigned(event: SignedEvent): Promise<void>
   sendBlock(to: string, block: Block): Promise<void>
   readBlocks(withPubkey: string): Promise<BlockMessage[]>
   /** Whether the key is an agent identity of this Buzz. Throws until Buzz has loaded its agents. */
@@ -176,12 +175,6 @@ export const createRelay = (ctx: RelayCtx): Relay => {
       })
       await delivered(outbox, id, 'The agent list was not updated. Retry.')
       await outbox.dismiss(id)
-    },
-
-    // The 1.0.5 outbox signs as the viewer (outbox.ts:83 send takes a template, no signature),
-    // so it cannot carry an event signed by the agent key. Task 8's live check decides the path.
-    publishSigned: async () => {
-      throw new Error('Publishing a pre-signed event is not supported yet')
     },
 
     sendBlock: async (to, block) => {

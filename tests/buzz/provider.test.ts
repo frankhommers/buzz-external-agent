@@ -77,6 +77,14 @@ const setup = (options: Options = {}) => {
   const published: SignedEvent[] = []
   /** Whether the agent's pending setup was already stored when its profile was published. */
   const storedAtPublish: boolean[] = []
+  /** Each publishAsAgent call: its relay and owner proof, and the secret it was given. */
+  const agentPublishes: {
+    relay: string
+    auth: NipOaTag
+    secret: Uint8Array
+    secretWasSet: boolean
+    signal: AbortSignal | undefined
+  }[] = []
   const blocks: { to: string; block: Block }[] = []
   const authCalls: string[] = []
   const relay: Relay = {
@@ -84,11 +92,6 @@ const setup = (options: Options = {}) => {
     readOwnRecords: async () => ({ ok: true, records: new Map() }),
     readProfile: async (pubkey) => published.find((event) => event.pubkey === pubkey),
     publishRecord: async () => {},
-    publishSigned: async (event) => {
-      storedAtPublish.push(store.pending().some((p) => p.pubkey === event.pubkey))
-      if (options.publishError) throw options.publishError
-      published.push(event)
-    },
     sendBlock: async (to, block) => {
       if (options.sendError) throw options.sendError
       blocks.push({ to, block })
@@ -106,6 +109,18 @@ const setup = (options: Options = {}) => {
       },
     },
     now: () => NOW_MS,
+    publishAsAgent: async ({ relay: url, secret, auth, event, signal: given }) => {
+      agentPublishes.push({
+        relay: url,
+        auth,
+        secret,
+        secretWasSet: secret.some((byte) => byte !== 0),
+        signal: given,
+      })
+      storedAtPublish.push(store.pending().some((p) => p.pubkey === event.pubkey))
+      if (options.publishError) throw options.publishError
+      published.push(event)
+    },
   }
   return {
     provider: createProvider(deps),
@@ -116,6 +131,7 @@ const setup = (options: Options = {}) => {
     operatorHex,
     published,
     storedAtPublish,
+    agentPublishes,
     blocks,
     authCalls,
   }
@@ -165,14 +181,34 @@ describe('provision', () => {
     expect(allStored(storage)).not.toMatch(/nsec1/i)
   })
 
+  test('publishes as the agent on the community relay, then zeroes the secret', async () => {
+    const { provider, agentPublishes, viewer } = setup()
+    const input = provisionInput()
+    await provider.provision(input)
+    expect(agentPublishes).toHaveLength(1)
+    const call = agentPublishes[0]
+    expect(call?.relay).toBe(COMMUNITY)
+    expect(call?.auth[1]).toBe(viewer)
+    expect(call?.signal).toBe(input.signal)
+    expect(call?.secretWasSet).toBe(true)
+    expect(call?.secret.every((byte) => byte === 0)).toBe(true)
+  })
+
+  test('zeroes the secret when publishing fails', async () => {
+    const { provider, agentPublishes } = setup({ publishError: new Error('relay refused') })
+    await expect(provider.provision(provisionInput())).rejects.toThrow('relay refused')
+    expect(agentPublishes[0]?.secretWasSet).toBe(true)
+    expect(agentPublishes[0]?.secret.every((byte) => byte === 0)).toBe(true)
+  })
+
   test('stores the sealed setup before publishing the profile', async () => {
     const { provider, storedAtPublish } = setup()
     await provider.provision(provisionInput())
     expect(storedAtPublish).toEqual([true])
   })
 
-  test('retry with the same slot republishes the stored profile without a new key', async () => {
-    const { provider, published, authCalls } = setup()
+  test('retry with the same slot returns the published agent without a new key', async () => {
+    const { provider, published, authCalls, agentPublishes } = setup()
     const first = await provider.provision(provisionInput())
     const second = await provider.provision(
       provisionInput({ picture: 'https://example.com/b.png' }),
@@ -180,8 +216,8 @@ describe('provision', () => {
 
     expect(second).toEqual(first)
     expect(authCalls).toHaveLength(1)
-    expect(published).toHaveLength(2)
-    expect(published[1]).toEqual(published[0] as SignedEvent)
+    expect(agentPublishes).toHaveLength(1)
+    expect(published).toHaveLength(1)
   })
 
   test('retry for the same slot in another community throws', async () => {
@@ -256,19 +292,35 @@ describe('provision', () => {
     expect(store.pending()).toHaveLength(0)
   })
 
-  test('keeps the sealed setup when publishing fails; a retry republishes it', async () => {
+  test('keeps the sealed setup when publishing fails; a retry cannot republish it', async () => {
     const options: Options = { publishError: new Error('relay refused') }
-    const { provider, store, published, authCalls } = setup(options)
+    const { provider, store, published, authCalls, agentPublishes } = setup(options)
     await expect(provider.provision(provisionInput())).rejects.toThrow('relay refused')
     const pending = store.pendingFor('vps-1')
     expect(pending?.sealed.startsWith('-----BEGIN AGE ENCRYPTED FILE-----')).toBe(true)
     expect(published).toHaveLength(0)
 
     delete options.publishError
-    const result = await provider.provision(provisionInput())
-    expect(result.pubkey).toBe(pending?.pubkey ?? '')
+    await expect(provider.provision(provisionInput())).rejects.toThrow(
+      'The agent profile could not be published; remove this unfinished agent and try again',
+    )
     expect(authCalls).toHaveLength(1)
-    expect(published).toEqual([pending?.profile as SignedEvent])
+    expect(agentPublishes).toHaveLength(1)
+    expect(store.pendingFor('vps-1')).toEqual(pending)
+  })
+
+  test('a retry after a failed publish succeeds when the profile reached the relay', async () => {
+    const options: Options = { publishError: new Error('no answer in time') }
+    const { provider, store, published, authCalls, agentPublishes } = setup(options)
+    await expect(provider.provision(provisionInput())).rejects.toThrow('no answer in time')
+    const pending = store.pendingFor('vps-1')
+    if (pending === undefined) throw new Error('missing pending setup')
+    published.push(pending.profile) // The relay stored it after all.
+
+    const result = await provider.provision(provisionInput())
+    expect(result.pubkey).toBe(pending.pubkey)
+    expect(authCalls).toHaveLength(1)
+    expect(agentPublishes).toHaveLength(1)
   })
 
   test('publishes nothing when the setup cannot be stored', async () => {
