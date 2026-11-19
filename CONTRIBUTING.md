@@ -33,4 +33,5 @@ The owner's nsec is read from a file. Use throwaway test identities only, never 
 
 Releases: set the version in `package.json` and `CHANGELOG.md`, then push a `v<version>` tag.
 CI builds, zips `dist/plugin` as `selfhosted-agents-<version>.zip`, adds `SHA256SUMS` and
-publishes a GitHub release (a pre-release when the version contains `-`).
+publishes the GitHub release "Self-hosted agents <version>" with that version's CHANGELOG
+section plus install steps as notes (a pre-release when the version contains `-`).

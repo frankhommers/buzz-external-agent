@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.0.0
+
+First stable release, for Buzz Desktop 1.0.5 and newer.
+
+- Verified live end to end on Buzz Desktop 1.0.5 and 1.0.6 (Linux), including a relay with
+  closed membership: offer a server, create an agent, install its key with the reference
+  installer, Installed, Retire, Retired, Delete; bring an existing agent into Buzz, retire and
+  delete it. Delete before Retire is refused.
+- No functional changes since 0.9.0-beta.2.
+- Known limitations: hosted agents always look online; Retire before Delete; if Delete is
+  refused right after Retired while Buzz is reconnecting, try Delete again; Cancel retire
+  request only cancels locally; an agent brought into Buzz appears on the Agents page after
+  Buzz reconnects or restarts; updating the plugin means removing it and adding the new zip.
+
 ## 0.9.0-beta.2
 
 Pre-release. The full flow was verified live on Buzz Desktop 1.0.5 (Linux) against a test
@@ -32,7 +46,7 @@ refused.
 ## 0.9.0-beta.1
 
 Pre-release. A TypeScript plugin for Buzz Desktop 1.0.5 replaces the Go placeholder, which
-only worked with old Buzz (last Go release: tag `v0.1.1`, see the GitHub releases page).
+only worked with old Buzz.
 
 - Self-hosted agent type with owner and operator roles, Buzz DM protocol, age-sealed keys.
 - Bring existing agents into Buzz, retire (also adopted agents) and delete.
