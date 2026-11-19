@@ -10890,14 +10890,24 @@ var stateOf = async (relay, viewer, pubkey, record) => {
   const runtime = recordRuntime(record.tags) || undefined;
   if (runtime === RUNTIME)
     return "already";
-  if (runtime !== undefined)
-    return "other-runtime";
   if (relay.isLocalIdentity(pubkey))
     return "local-key";
   if (nameOf(record).trim() === "")
     return "unverified-owner";
   const profile = await relay.readProfile(pubkey);
-  return profile !== undefined && verifyEvent(profile) && profileOwner(profile) === viewer ? "ready" : "unverified-owner";
+  if (profile === undefined || !verifyEvent(profile) || profileOwner(profile) !== viewer)
+    return "unverified-owner";
+  return runtime === undefined ? "ready" : "other-runtime";
+};
+var itemOf = async (relay, viewer, pubkey, record) => {
+  const state = await stateOf(relay, viewer, pubkey, record);
+  const runtime = recordRuntime(record.tags);
+  return {
+    pubkey,
+    name: nameOf(record).trim(),
+    state,
+    ...state === "other-runtime" && runtime !== undefined ? { runtime } : {}
+  };
 };
 var findAdoptable = async (relay) => {
   try {
@@ -10907,17 +10917,13 @@ var findAdoptable = async (relay) => {
       return read;
     const items = [];
     for (const [pubkey, record] of read.records)
-      items.push({
-        pubkey,
-        name: nameOf(record).trim(),
-        state: await stateOf(relay, viewer, pubkey, record)
-      });
+      items.push(await itemOf(relay, viewer, pubkey, record));
     return { ok: true, items };
   } catch (error) {
     return { ok: false, error: messageOf4(error) };
   }
 };
-var adopt = async (relay, pubkey) => {
+var adopt = async (relay, pubkey, options = {}) => {
   const { viewer } = await relay.ready();
   const read = await relay.readOwnRecords();
   if (!read.ok)
@@ -10926,7 +10932,8 @@ var adopt = async (relay, pubkey) => {
   if (prior === undefined)
     throw new Error(NOT_FOUND);
   const state = await stateOf(relay, viewer, pubkey, prior);
-  if (state !== "ready")
+  const takingOver = state === "other-runtime" && options.takeOver === true;
+  if (state !== "ready" && !takingOver)
     throw new Error(REFUSALS[state]);
   const picture = prior.content.picture;
   await relay.publishRecord(mergeAgentRecord(prior, {
@@ -10944,6 +10951,7 @@ var ADOPT_STATE_TEXT = {
   "other-runtime": "Managed by another runtime",
   already: "Already a self-hosted agent"
 };
+var TAKE_OVER_WARNING = "Take it over only if it runs on your own server and no other Buzz runs it; " + "that runtime then no longer manages it.";
 var ADOPTED_NOTICE = "It appears on the Agents page after Buzz reconnects or restarts.";
 var messageOf5 = (error) => error instanceof Error ? error.message : String(error);
 var shortNpub = (pubkey) => `${encodeNpub(pubkey).slice(0, 16)}…`;
@@ -10956,6 +10964,7 @@ var ownerCard = (deps) => function OwnerCard(props) {
   const [notice, setNotice] = react.useState(NO_NOTICE);
   const [busy, setBusy] = react.useState(false);
   const [adoptables, setAdoptables] = react.useState(undefined);
+  const [takeOver, setTakeOver] = react.useState(undefined);
   react.useEffect(() => {
     let live = true;
     const refresh = () => {
@@ -11030,11 +11039,21 @@ var ownerCard = (deps) => function OwnerCard(props) {
     await owner.cancelRetire(agent.pubkey);
     return "Retire request cancelled.";
   })) : null))));
-  const adoptList = adoptables === undefined ? hint("Looking for your agents…") : !adoptables.ok ? h("p", { role: "alert", style: ERROR }, `Could not read your agents: ${adoptables.error}`) : adoptables.items.length === 0 ? hint("You have no agents in this community.") : h("ul", { style: LIST }, ...adoptables.items.map((adoptable) => item(adoptable.pubkey, `${adoptable.name || shortNpub(adoptable.pubkey)} — ${ADOPT_STATE_TEXT[adoptable.state]}`, adoptable.state === "ready" ? button("Bring into Buzz", () => run(async () => {
-    await adopt(relay, adoptable.pubkey);
-    loadAdoptables();
-    return ADOPTED_NOTICE;
-  })) : null)));
+  const adoptList = adoptables === undefined ? hint("Looking for your agents…") : !adoptables.ok ? h("p", { role: "alert", style: ERROR }, `Could not read your agents: ${adoptables.error}`) : adoptables.items.length === 0 ? hint("You have no agents in this community.") : h("ul", { style: LIST }, ...adoptables.items.map((adoptable) => {
+    const label = adoptable.name || shortNpub(adoptable.pubkey);
+    const bringIn = (options) => run(async () => {
+      await adopt(relay, adoptable.pubkey, options);
+      setTakeOver(undefined);
+      loadAdoptables();
+      return ADOPTED_NOTICE;
+    });
+    if (adoptable.state === "ready")
+      return item(adoptable.pubkey, `${label} — ${ADOPT_STATE_TEXT.ready}`, button("Bring into Buzz", () => bringIn({})));
+    if (adoptable.state !== "other-runtime")
+      return item(adoptable.pubkey, `${label} — ${ADOPT_STATE_TEXT[adoptable.state]}`);
+    const managed = `${label} — Managed by ${adoptable.runtime ?? "another runtime"}`;
+    return takeOver === adoptable.pubkey ? item(adoptable.pubkey, `${managed}. ${TAKE_OVER_WARNING}`, button("Confirm take over", () => bringIn({ takeOver: true })), button("Cancel", () => setTakeOver(undefined))) : item(adoptable.pubkey, managed, button("Take over", () => setTakeOver(adoptable.pubkey)));
+  }));
   const adoptSection = h("div", { style: SECTION }, heading("Bring into Buzz"), hint("Agents you already run elsewhere and own can be listed here as hosted."), adoptList, h("div", { style: ROW }, button("Refresh", loadAdoptables)));
   return h("section", { className: "ui-card", style: CARD }, viewError === "" ? null : h("p", { role: "alert", style: ERROR }, viewError), notice.text === "" ? null : h("p", noticeProps(notice), notice.text), operatorSection, offersSection, agentsSection, adoptSection);
 };
