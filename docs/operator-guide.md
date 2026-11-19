@@ -1,8 +1,10 @@
 # Operator guide
 
-You run the servers; owners ask for agents. Give owners your npub, and paste your own npub
-as Operator in Settings → Self-hosted agents to see the operator view. Everything is in
-Settings → "Self-hosted agents: operator".
+You run the servers; owners ask for agents. Give owners your npub.
+
+Paste your own npub as Operator in Settings → Self-hosted agents to get the operator view.
+It is Settings → "Self-hosted agents — operator", listed only while you are the operator
+set for the selected community.
 
 ## Offer a server
 
@@ -49,6 +51,9 @@ An unknown placeholder is shown as an error on the request instead of a command.
 Under **Retire requests**, stop the agent on its server, then click **Retired**; the owner
 can then delete the agent in Buzz.
 
+An owner's **Cancel retire request** only cancels on their device; the request stays listed
+here. Check with the owner before acting on a request they may have taken back.
+
 ## Existing agents and Known owners
 
 Owners can bring agents you already run into Buzz and later retire them. Those retire requests
@@ -62,4 +67,5 @@ Offers, requests and confirmations are handled locally; no DM to yourself.
 ## Limits
 
 DMs are not end-to-end encrypted and carry only public data and age ciphertext. The plugin
-never contacts servers.
+never contacts servers. Verified on Buzz Desktop 1.0.5 (Linux) against a test relay.
+Updating the plugin on Buzz 1.0.5 means deleting it and adding the new version.

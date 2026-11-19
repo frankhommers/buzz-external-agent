@@ -3,9 +3,9 @@
 A [Buzz Desktop](https://github.com/block/buzz-app) plugin that lists, creates and
 retires agents running on your own servers.
 
-> **Pre-release (0.9.0-beta.1).** Creating **new** agents does not work end to end
-> yet, see [Known limitations](#known-limitations). Adopting existing agents,
-> retiring and deleting are implemented but not yet verified against a live Buzz.
+> **Pre-release (0.9.0-beta.2).** The full flow (offer, create, install, retire, delete,
+> and bringing an existing agent into Buzz) was verified live on Buzz Desktop 1.0.5 (Linux)
+> against a test relay. See [Known limitations](#known-limitations).
 
 ## Who it is for
 
@@ -34,14 +34,14 @@ Or build it: `bun install && bun run build`, then add `dist/plugin`.
 ## Roles and flows
 
 - **Setup**: the owner opens Settings → Self-hosted agents and pastes the operator's npub.
-  The operator pastes their own npub as Operator in Settings → Self-hosted agents to see the
-  operator view.
+  The operator pastes their own npub as Operator in Settings → Self-hosted agents to get the
+  operator view, Settings → "Self-hosted agents — operator" (listed only for the operator).
 - **Offer**: the operator adds a server (slot id, label, SSH host public key) and offers
   it to an owner. The owner sees it under "Servers offered to you".
 - **Create** (owner): New agent, type **Self-hosted agent**, choose an offered server. The
-  plugin generates the key in memory, gets the owner proof from Buzz, signs and publishes
-  the agent profile, seals the key to the server's host key and sends an install request to
-  the operator.
+  plugin generates the key in memory, gets the owner proof from Buzz, seals the key to the
+  server's host key, publishes the agent profile signed by the agent over the plugin's own
+  connection (signed in as the agent, NIP-42) and sends an install request to the operator.
 - **Install** (operator): download the `.age` file, copy the public data or the rendered
   command, deploy, then click **Installed**. See [the operator guide](docs/operator-guide.md).
 - **Bring into Buzz** (owner): an agent you already run elsewhere is listed as hosted
@@ -71,10 +71,8 @@ no message is sent to yourself.
 
 ## Known limitations
 
-- **Creating new agents does not work yet on Buzz Desktop 1.0.5.** Publishing the new
-  agent's profile (needed by the operator's verification and by `buzz users get` on the
-  server) is not implemented: `publishSigned` is a stub pending a live verification step.
-- Adopting, retiring and deleting are implemented, but not yet verified against a live Buzz.
+- Verified on Buzz Desktop 1.0.5 (Linux) against a test relay only; other versions and
+  platforms are untested.
 - No rename or avatar change from Buzz; change them on the server.
 - **Retire before Delete.** Buzz archives an agent before it asks the plugin to remove it.
   Delete only succeeds after the operator confirmed retirement, with the agent's community
@@ -82,8 +80,13 @@ no message is sent to yourself.
   request was never sent can be deleted directly. Once sending was attempted, even if it
   failed, the agent must be retired first; agents brought into Buzz or set up on another
   device too.
+- Right after a refused Delete, Delete may need a second attempt.
+- **Cancel retire request** only cancels on this device. The request already sent stays with
+  the operator, who may still act on it and stop the agent.
 - Hosted agents always appear online in Buzz. Use the **Server** tab for the real status.
 - No remote start or stop.
+- Updating the plugin on Buzz 1.0.5 means deleting it and adding the new version again
+  (there is no reload button).
 
 ## Reference installer
 

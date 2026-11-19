@@ -9,13 +9,12 @@ operator is set per community.
 
 ## Create an agent
 
-Pre-release: on Buzz Desktop 1.0.5 creating new agents does not work end to end yet (the
-agent profile cannot be published). The steps are what the plugin is built to do.
-
 1. Ask the operator for a server. It appears under "Servers offered to you".
 2. New agent → **Self-hosted agent** → choose the server and name the agent. If no server is
    ready you see "No server is ready for you yet. Ask your operator."
-3. The Server tab shows "Waiting for installation" until the operator confirms.
+3. The plugin publishes the agent's profile (signed by the agent itself) and sends the
+   operator an install request with the sealed key. The Server tab shows "Waiting for
+   installation" until the operator confirms.
 
 New agents answer to anyone by default (`respond_to: anyone`, parallelism 1). A server holds
 one agent, and each setup uses a new key.
@@ -48,10 +47,17 @@ holds for agents brought into Buzz or set up on another device. Delete with the 
 community selected in Buzz.
 
 Changed your mind while the operator has not confirmed yet? **Cancel retire request** sets
-the agent back to its earlier status on this device.
+the agent back to its earlier status on this device. It only cancels locally: the request
+already sent stays with the operator, who may still stop the agent. Tell the operator too.
+
+If Delete was refused and you then retired the agent, Delete may need a second attempt.
 
 ## Limits
 
+- Verified on Buzz Desktop 1.0.5 (Linux) against a test relay.
+- Hosted agents always look online in Buzz; the Server tab has the real status.
+- Retire before Delete (see above).
 - No rename or avatar change from Buzz; change them on the server.
+- Updating the plugin on Buzz 1.0.5: delete it and add the new version (no reload button).
 - DMs with the operator are not end-to-end encrypted. Only public data and sealed
   ciphertext travel in them.
