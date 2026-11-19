@@ -104,3 +104,68 @@ test('a retire-requested agent offers Cancel retire request, which calls the own
   await Promise.resolve()
   expect(cancelled).toEqual(['d'.repeat(64)])
 })
+
+const pub = 'e'.repeat(64)
+/** Renders with the given state values in hook order; other states keep their initial value. */
+const renderWith = (
+  states: Record<number, unknown>,
+  setters: Record<number, (v: unknown) => void> = {},
+) => {
+  let index = 0
+  const react: ReactLike = {
+    createElement: (type, props, ...children) => ({ type, props: props ?? null, children }),
+    useState: <T>(initial: T): [T, () => void] => {
+      const at = index++
+      return [
+        (at in states ? states[at] : initial) as T,
+        ((v: unknown) => setters[at]?.(v)) as () => void,
+      ]
+    },
+    useEffect: () => {},
+  }
+  const component = ownerCard({
+    react,
+    owner: {} as Owner,
+    relay: {} as Relay,
+    agents: { subscribe: () => () => {} },
+  })
+  const tree = component({ active: () => true })
+  const buttons: Node[] = []
+  const collect = (node: unknown): void => {
+    if (node === null || typeof node !== 'object') return
+    const n = node as Node
+    if (n.type === 'button') buttons.push(n)
+    for (const child of n.children) collect(child)
+  }
+  collect(tree)
+  return { text: textOf(tree), buttons }
+}
+// Hook order in ownerCard: view, viewError, operatorDraft, notice, busy, adoptables, takeOver.
+const ADOPTABLES = 5
+const TAKE_OVER = 6
+const managedElsewhere = {
+  ok: true,
+  items: [{ pubkey: pub, name: 'Shackleton', state: 'other-runtime', runtime: 'buzz.goose/goose' }],
+}
+
+test('an agent another runtime manages shows that runtime and a Take over button', () => {
+  const picked: unknown[] = []
+  const { text, buttons } = renderWith(
+    { [ADOPTABLES]: managedElsewhere },
+    { [TAKE_OVER]: (v) => picked.push(v) },
+  )
+  expect(text).toContain('Shackleton — Managed by buzz.goose/goose')
+  expect(buttons.some((b) => b.children.includes('Bring into Buzz'))).toBe(false)
+  const take = buttons.find((b) => b.children.includes('Take over'))
+  const onClick = take?.props?.onClick
+  if (typeof onClick !== 'function') throw new Error('no Take over button')
+  onClick()
+  expect(picked).toEqual([pub])
+})
+
+test('after Take over, the row asks to confirm and says what taking over means', () => {
+  const { text, buttons } = renderWith({ [ADOPTABLES]: managedElsewhere, [TAKE_OVER]: pub })
+  expect(text).toContain('only if it runs on your own server')
+  expect(buttons.some((b) => b.children.includes('Confirm take over'))).toBe(true)
+  expect(buttons.some((b) => b.children.includes('Cancel'))).toBe(true)
+})

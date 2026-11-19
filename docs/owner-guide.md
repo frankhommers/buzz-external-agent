@@ -25,8 +25,16 @@ Settings → Self-hosted agents → **Bring into Buzz** → Refresh. Each of you
 listed with a state:
 
 - Can be brought into Buzz: its signed profile names you as owner.
-- Cannot verify owner, Its key is held in this Buzz, Managed by another runtime, Already a
-  self-hosted agent: not adoptable.
+- Managed by _runtime_ (for example `buzz.goose/goose`): another harness manages it, often
+  because it was imported into Buzz with **Import an agent**. If it really runs on your own
+  server and no Buzz runs it, choose **Take over** and then **Confirm take over**. Only
+  offered when its key is not held in this Buzz.
+- Cannot verify owner, Its key is held in this Buzz, Already a self-hosted agent: not
+  adoptable.
+
+Do not use Buzz's own **Import an agent** for an agent that runs on a server: Buzz would then
+run it on your desktop as well. And do not **Delete** such an agent to undo that: Delete
+archives the agent and removes it from every channel, also for its server.
 
 Bring it in; it appears on the Agents page after Buzz reconnects or restarts. Its key and
 server are not touched.

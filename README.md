@@ -51,7 +51,9 @@ Or build it: `bun install && bun run build`, then add `dist/plugin`.
 - **Install** (operator): download the `.age` file, copy the public data or the rendered
   command, deploy, then click **Installed**. See [the operator guide](docs/operator-guide.md).
 - **Bring into Buzz** (owner): an agent you already run elsewhere is listed as hosted
-  again, keeping its key. It appears after Buzz reconnects or restarts.
+  again, keeping its key. It appears after Buzz reconnects or restarts. An agent another
+  runtime manages (for example after Buzz's own import) can be taken over, once its key is
+  not held in this Buzz.
 - **Retire and delete** (owner): Retire asks the operator to stop the agent; once they
   confirm, delete it. See [the owner guide](docs/owner-guide.md).
 

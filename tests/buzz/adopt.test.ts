@@ -74,11 +74,31 @@ describe('findAdoptable', () => {
     expect((await onlyItem(relay))?.state).toBe('local-key')
   })
 
-  test('a record naming another runtime is other-runtime', async () => {
+  test('a record naming another runtime is other-runtime, with that runtime', async () => {
     const { relay } = setup({
       events: [record(undefined, [['runtime', 'someone.else/agent']]), profile()],
     })
-    expect((await onlyItem(relay))?.state).toBe('other-runtime')
+    expect(await onlyItem(relay)).toEqual({
+      pubkey: agent,
+      name: 'Robo',
+      state: 'other-runtime',
+      runtime: 'someone.else/agent',
+    })
+  })
+
+  test('another runtime with a key held in this Buzz is local-key', async () => {
+    const { relay } = setup({
+      events: [record(undefined, [['runtime', 'buzz.goose/goose']]), profile()],
+      agents: [agentSummary(agent, 'here')],
+    })
+    expect((await onlyItem(relay))?.state).toBe('local-key')
+  })
+
+  test('another runtime whose profile names someone else is unverified-owner', async () => {
+    const { relay } = setup({
+      events: [record(undefined, [['runtime', 'buzz.goose/goose']]), profile(strangerSecret)],
+    })
+    expect((await onlyItem(relay))?.state).toBe('unverified-owner')
   })
 
   test('a record with our runtime is already', async () => {
@@ -189,6 +209,43 @@ describe('adopt', () => {
     for (const events of cases) {
       const fake = setup({ events })
       await expect(adopt(fake.relay, agent)).rejects.toThrow()
+      expect(fake.sent).toHaveLength(0)
+    }
+  })
+
+  test('takes over an agent another runtime manages only when asked to', async () => {
+    const events = [
+      record(undefined, [
+        ['runtime', 'buzz.goose/goose'],
+        ['client-id', 'desktop'],
+      ]),
+      profile(),
+    ]
+    const refused = setup({ events })
+    await expect(adopt(refused.relay, agent)).rejects.toThrow(/Another runtime/)
+    expect(refused.sent).toHaveLength(0)
+
+    const fake = setup({ events })
+    await adopt(fake.relay, agent, { takeOver: true })
+    expect(fake.sent).toHaveLength(1)
+    expect(fake.sent[0]?.tags).toEqual([
+      ['d', agent],
+      ['runtime', RUNTIME],
+    ])
+  })
+
+  test('take over still refuses a local key, an unverified owner and our own runtime', async () => {
+    const cases: FakeOptions[] = [
+      {
+        events: [record(undefined, [['runtime', 'buzz.goose/goose']]), profile()],
+        agents: [agentSummary(agent, 'here')],
+      },
+      { events: [record(undefined, [['runtime', 'buzz.goose/goose']]), profile(strangerSecret)] },
+      { events: [record(undefined, [['runtime', RUNTIME]]), profile()] },
+    ]
+    for (const options of cases) {
+      const fake = setup(options)
+      await expect(adopt(fake.relay, agent, { takeOver: true })).rejects.toThrow()
       expect(fake.sent).toHaveLength(0)
     }
   })

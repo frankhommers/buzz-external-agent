@@ -48,6 +48,10 @@ export const ADOPT_STATE_TEXT: Record<AdoptState, string> = {
   already: 'Already a self-hosted agent',
 }
 
+export const TAKE_OVER_WARNING =
+  'Take it over only if it runs on your own server and no other Buzz runs it; ' +
+  'that runtime then no longer manages it.'
+
 export const ADOPTED_NOTICE = 'It appears on the Agents page after Buzz reconnects or restarts.'
 
 const messageOf = (error: unknown): string =>
@@ -65,6 +69,7 @@ export const ownerCard = (deps: OwnerCardDeps) =>
     const [notice, setNotice] = react.useState<Notice>(NO_NOTICE)
     const [busy, setBusy] = react.useState(false)
     const [adoptables, setAdoptables] = react.useState<AdoptableList | undefined>(undefined)
+    const [takeOver, setTakeOver] = react.useState<string | undefined>(undefined)
 
     react.useEffect(() => {
       let live = true
@@ -235,21 +240,37 @@ export const ownerCard = (deps: OwnerCardDeps) =>
             : h(
                 'ul',
                 { style: LIST },
-                ...adoptables.items.map((adoptable) =>
-                  item(
-                    adoptable.pubkey,
-                    `${adoptable.name || shortNpub(adoptable.pubkey)} — ${ADOPT_STATE_TEXT[adoptable.state]}`,
-                    adoptable.state === 'ready'
-                      ? button('Bring into Buzz', () =>
-                          run(async () => {
-                            await adopt(relay, adoptable.pubkey)
-                            loadAdoptables()
-                            return ADOPTED_NOTICE
-                          }),
-                        )
-                      : null,
-                  ),
-                ),
+                ...adoptables.items.map((adoptable) => {
+                  const label = adoptable.name || shortNpub(adoptable.pubkey)
+                  const bringIn = (options: { takeOver?: boolean }) =>
+                    run(async () => {
+                      await adopt(relay, adoptable.pubkey, options)
+                      setTakeOver(undefined)
+                      loadAdoptables()
+                      return ADOPTED_NOTICE
+                    })
+                  if (adoptable.state === 'ready')
+                    return item(
+                      adoptable.pubkey,
+                      `${label} — ${ADOPT_STATE_TEXT.ready}`,
+                      button('Bring into Buzz', () => bringIn({})),
+                    )
+                  if (adoptable.state !== 'other-runtime')
+                    return item(adoptable.pubkey, `${label} — ${ADOPT_STATE_TEXT[adoptable.state]}`)
+                  const managed = `${label} — Managed by ${adoptable.runtime ?? 'another runtime'}`
+                  return takeOver === adoptable.pubkey
+                    ? item(
+                        adoptable.pubkey,
+                        `${managed}. ${TAKE_OVER_WARNING}`,
+                        button('Confirm take over', () => bringIn({ takeOver: true })),
+                        button('Cancel', () => setTakeOver(undefined)),
+                      )
+                    : item(
+                        adoptable.pubkey,
+                        managed,
+                        button('Take over', () => setTakeOver(adoptable.pubkey)),
+                      )
+                }),
               )
     const adoptSection = h(
       'div',
