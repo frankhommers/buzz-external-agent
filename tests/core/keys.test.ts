@@ -22,9 +22,25 @@ describe('keys', () => {
     expect(() => decodeNpub(NPUB.replace('npub', 'nsec'))).toThrow()
   })
 
-  test('nsec encoding uses the nsec prefix and round-trips length', () => {
-    const secret = generateSecretKey()
-    expect(encodeNsec(secret).startsWith('nsec1')).toBe(true)
+  test('nsec encodes the NIP-19 vector', () => {
+    const secret = Uint8Array.from(
+      Buffer.from('67dea2ed018072d675f5415ecfaed7d2597555e202d85b3d65ea4e58d2d92ffa', 'hex'),
+    )
+    expect(encodeNsec(secret)).toBe(
+      'nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5',
+    )
+  })
+
+  test('nsec encoding refuses anything but a valid 32-byte secret key', () => {
+    const order = 'fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141'
+    for (const secret of [
+      new Uint8Array(31).fill(1),
+      new Uint8Array(33).fill(1),
+      new Uint8Array(32),
+      Uint8Array.from(Buffer.from(order, 'hex')),
+    ]) {
+      expect(() => encodeNsec(secret)).toThrow('not a valid secret key')
+    }
   })
 
   test('generateSecretKey returns distinct 32-byte keys', () => {
