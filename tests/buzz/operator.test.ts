@@ -36,7 +36,8 @@ const strangerSecret = secretOf(3)
 const stranger = publicKeyHex(strangerSecret)
 const agentSecret = secretOf(4)
 const agent = publicKeyHex(agentSecret)
-const otherAgent = publicKeyHex(secretOf(5))
+const otherAgentSecret = secretOf(5)
+const otherAgent = publicKeyHex(otherAgentSecret)
 const SEALED = '-----BEGIN AGE ENCRYPTED FILE-----\nYWdl\n-----END AGE ENCRYPTED FILE-----'
 const RSA_KEY = 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC7 host'
 
@@ -89,7 +90,27 @@ const idOf = (pubkey = agent, slotId = 'vps-1', by = owner): RequestId => ({
   owner: by,
 })
 const noProfile = async (): Promise<SignedEvent | undefined> => undefined
-const context = { operator, viewer: operator, owner, readProfile: noProfile }
+
+/** The signed kind 0 profile of an agent, naming `signer` as its owner. */
+const profileOf = (secret: Uint8Array, signer: Uint8Array): SignedEvent =>
+  buildAgentProfile({
+    secret,
+    name: 'Robo',
+    auth: signNipOaForTests(signer, publicKeyHex(secret)),
+    createdAt: 1,
+  })
+
+/** Profiles of both test agents, owned by `signer`. */
+const profilesOwnedBy = (signer: Uint8Array): Record<string, SignedEvent> => ({
+  [agent]: profileOf(agentSecret, signer),
+  [otherAgent]: profileOf(otherAgentSecret, signer),
+})
+const readProfilesOf =
+  (profiles: Record<string, SignedEvent>) =>
+  async (pubkey: string): Promise<SignedEvent | undefined> =>
+    profiles[pubkey]
+const ownersProfiles = readProfilesOf(profilesOwnedBy(ownerSecret))
+const context = { operator, viewer: operator, owner, readProfile: ownersProfiles }
 
 const agentProfile = (signer: Uint8Array = ownerSecret, auth = true): SignedEvent =>
   buildAgentProfile({
@@ -122,7 +143,7 @@ const fakeRelay = (options: FakeOptions = {}) => {
       community: COMMUNITY,
     }),
     readOwnRecords: async () => ({ ok: true, records: new Map() }),
-    readProfile: async (pubkey) => options.profiles?.[pubkey],
+    readProfile: async (pubkey) => (options.profiles ?? profilesOwnedBy(ownerSecret))[pubkey],
     publishRecord: async () => {},
     publishSigned: async () => {},
     sendBlock: async (to, block) => {
@@ -618,7 +639,7 @@ describe('two owners and one agent pubkey', () => {
       { ...context, owner: stranger, readProfile: async () => agentProfile() },
     )
     expect(rejected.map((r) => r.reason)).toEqual([
-      'agent already requested on another server',
+      'agent is owned by someone else',
       'not a server offered to this owner',
       'not a server offered to this owner',
       'agent is owned by someone else',
@@ -638,11 +659,71 @@ describe('two owners and one agent pubkey', () => {
   })
 })
 
+describe('install-requests need the agent profile to name the sender', () => {
+  test("another owner's earlier request for a public agent key does not win", async () => {
+    const store = newStore()
+    store.putSlot(slot('vps-1'))
+    store.putSlot(slot('vps-2', { owner: stranger }))
+    const strangers = await applyOwnerBlocks(
+      store,
+      [from(stranger, installRequest({ slot: 'vps-2' }, strangerSecret))],
+      { ...context, owner: stranger },
+    )
+    expect(strangers.map((r) => r.reason)).toEqual(['agent is owned by someone else'])
+    expect(store.requests()).toEqual([])
+    const ownersRequest = installRequest()
+    expect(await applyOwnerBlocks(store, [from(owner, ownersRequest)], context)).toEqual([])
+    expect(store.requests()).toEqual([ownersRequest])
+    expect(store.slots().map((s) => s.state)).toEqual(['requested', 'offered'])
+
+    const { relay, sent } = fakeRelay()
+    await expect(
+      confirm(relay, store, 'installed', idOf(agent, 'vps-2', stranger)),
+    ).rejects.toThrow()
+    await confirm(relay, store, 'installed', idOf())
+    expect(sent.map((m) => m.to)).toEqual([owner])
+  })
+
+  test('a request refused before its profile is visible is accepted on a later poll', async () => {
+    const store = newStore()
+    store.putSlot(slot('vps-1'))
+    const request = installRequest()
+    const early = await applyOwnerBlocks(store, [from(owner, request)], {
+      ...context,
+      readProfile: noProfile,
+    })
+    expect(early.map((r) => r.reason)).toEqual(['agent profile missing or unverified'])
+    expect(store.requests()).toEqual([])
+    expect(store.slots()[0]?.state).toBe('offered')
+    expect(await applyOwnerBlocks(store, [from(owner, request)], context)).toEqual([])
+    expect(store.requests()).toEqual([request])
+  })
+
+  test("a profile that is not the agent's own or does not verify is refused", async () => {
+    for (const profile of [
+      profileOf(otherAgentSecret, ownerSecret),
+      { ...profileOf(agentSecret, ownerSecret), content: '{"name":"forged"}' },
+    ]) {
+      const store = newStore()
+      store.putSlot(slot('vps-1'))
+      const rejected = await applyOwnerBlocks(store, [from(owner, installRequest())], {
+        ...context,
+        readProfile: async () => profile,
+      })
+      expect(rejected.map((r) => r.reason)).toEqual(['agent profile missing or unverified'])
+      expect(store.requests()).toEqual([])
+    }
+  })
+})
+
 describe('the operator as owner: local requests, no DM', () => {
   const selfSlot = (state: OperatorSlot['state'] = 'offered'): OperatorSlot =>
     slot('vps-1', { owner: operator, state })
   const ownRequest = (): InstallRequest => installRequest({}, operatorSecret)
-  const local = (readProfile = noProfile) => ({ viewer: operator, readProfile })
+  const local = (readProfile = readProfilesOf(profilesOwnedBy(operatorSecret))) => ({
+    viewer: operator,
+    readProfile,
+  })
 
   test('an own install-request passes the same gates and is listed', async () => {
     const store = newStore()
@@ -666,6 +747,21 @@ describe('the operator as owner: local requests, no DM', () => {
       'not a server offered to this owner',
     )
     expect(notOffered.requests()).toEqual([])
+  })
+
+  test('an own install-request needs the agent profile to name self', async () => {
+    for (const [readProfile, reason] of [
+      [ownersProfiles, 'agent is owned by someone else'],
+      [noProfile, 'agent profile missing or unverified'],
+    ] as const) {
+      const store = newStore()
+      store.putSlot(selfSlot())
+      await expect(receiveOwnRequest(store, ownRequest(), local(readProfile))).rejects.toThrow(
+        reason,
+      )
+      expect(store.requests()).toEqual([])
+      expect(store.slots()[0]?.state).toBe('offered')
+    }
   })
 
   test('an own adopted retire-request needs a profile owned by self', async () => {

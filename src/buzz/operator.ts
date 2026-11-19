@@ -312,9 +312,9 @@ interface RequestContext {
 
 /**
  * Lists one owner request, or returns why it was refused. An install-request is listed only when
- * its owner proof verifies and names the sender, its slot was offered to that sender and is still
- * open for it, and the agent is not requested on another slot; it replaces older requests for its
- * slot. A retire-request needs a slot offered to the sender with that agent requested on it or, for
+ * its owner proof verifies and names the sender, the agent's own signed profile names the sender as
+ * owner, its slot was offered to that sender and is still open for it, and the agent is not
+ * requested on another slot; it replaces older requests for its slot. A retire-request needs a slot offered to the sender with that agent requested on it or, for
  * an adopted agent, an agent profile whose verified owner is the sender.
  * Requests already listed for this sender are skipped silently.
  */
@@ -337,6 +337,14 @@ const applyRequest = async (
   if (block.type === 'install-request') {
     if (!verifyNipOa(block.auth, block.pubkey)) return 'owner proof does not verify'
     if (block.auth[1] !== sender) return 'owner proof names someone else'
+    // An agent key is public from its profile on: anyone can sign a proof for it. Only the owner
+    // named by the agent's own signed profile may request it. Not stored, so retried next poll.
+    const profileOwnerOf = verifiedProfileOwner(
+      await context.readProfile(block.pubkey),
+      block.pubkey,
+    )
+    if (profileOwnerOf === undefined) return 'agent profile missing or unverified'
+    if (profileOwnerOf !== sender) return 'agent is owned by someone else'
     if (!offeredTo(slot, sender) || !REQUESTABLE.has(slot.state))
       return 'not a server offered to this owner'
     // A new key per setup: the same agent on another slot is someone else's request.

@@ -79,7 +79,7 @@ const setup = (options: Options = {}) => {
   const relay: Relay = {
     ready: async () => ({ origin: ORIGIN, viewer, community: COMMUNITY }),
     readOwnRecords: async () => ({ ok: true, records: new Map() }),
-    readProfile: async () => undefined,
+    readProfile: async (pubkey) => published.find((event) => event.pubkey === pubkey),
     publishRecord: async () => {},
     publishSigned: async (event) => {
       if (options.publishError) throw options.publishError
@@ -305,6 +305,18 @@ describe('activate', () => {
     expect(store.requests()).toMatchObject([{ type: 'install-request', slot: 'vps-1', pubkey }])
     expect(store.slots()[0]?.state).toBe('requested')
     expect(store.statusOf(pubkey)).toBe('awaiting-install')
+  })
+
+  test('when the viewer is the operator, the agent profile must be visible and name self', async () => {
+    const { provider, store, blocks, published } = setup({ operatorIsViewer: true })
+    const { pubkey } = await provider.provision(provisionInput())
+    published.length = 0
+    const auth = signNipOaForTests(generateSecretKey(), pubkey)
+    const input = { pubkey, name: 'Helper', community: COMMUNITY, auth, signal: signal() }
+    await expect(provider.activate(input)).rejects.toThrow('agent profile missing or unverified')
+    expect(blocks).toHaveLength(0)
+    expect(store.requests()).toEqual([])
+    expect(store.statusOf(pubkey)).toBeUndefined()
   })
 
   test('when the viewer is the operator, the local request passes the same gates', async () => {
