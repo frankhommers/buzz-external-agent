@@ -191,6 +191,18 @@ describe('sendBlock', () => {
     expect(fake.messagesSent).toEqual([{ channelId: `dm-${peer}`, content: encodeBlock(offer) }])
   })
 
+  test('dismisses the outbox entry once the relay accepted the message', async () => {
+    const fake = fakeCtx()
+    await createRelay(fake.ctx).sendBlock(peer, offer)
+    expect(fake.dismissed).toEqual(['msg-1'])
+  })
+
+  test('keeps a refused message in the outbox so the user sees it', async () => {
+    const fake = fakeCtx({ deliveryOutcome: 'failed' })
+    await expect(createRelay(fake.ctx).sendBlock(peer, offer)).rejects.toThrow('relay refused')
+    expect(fake.dismissed).toEqual([])
+  })
+
   test('refuses secret material before touching the DM', async () => {
     const fake = fakeCtx()
     const bad = { ...offer, slot: 'nsec1leak' } as Block

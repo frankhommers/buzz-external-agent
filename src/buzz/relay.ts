@@ -185,6 +185,8 @@ export const createRelay = (ctx: RelayCtx): Relay => {
       const channelId = await openDirectMessage(session, to)
       const id = session.messages.send(channelId, text)
       await delivered(outbox, id, 'The message was not sent. Retry.')
+      // As publishRecord: Buzz caps pending outbox entries, so clear the delivered one.
+      await outbox.dismiss(id)
     },
 
     readBlocks: async (withPubkey) => {
