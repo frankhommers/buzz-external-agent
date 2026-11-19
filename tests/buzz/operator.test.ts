@@ -516,6 +516,19 @@ describe('applyOwnerBlocks', () => {
     expect(store.retireRequests()).toEqual([storedRetire()])
   })
 
+  test('one retire-request per owner and agent: a confirmed one is not reopened', async () => {
+    const store = newStore()
+    store.putSlot(slot('vps-1', { state: 'installed' }))
+    store.addRequest(installRequest())
+    const messages = [from(owner, retireRequest()), from(owner, retireRequest(agent, 'adopted'))]
+    expect(await applyOwnerBlocks(store, messages, context)).toEqual([])
+    expect(store.retireRequests()).toEqual([storedRetire()])
+    await confirm(fakeRelay().relay, store, 'retired', idOf())
+    expect(await applyOwnerBlocks(store, messages, context)).toEqual([])
+    expect(store.retireRequests()).toEqual([{ ...storedRetire(), retired: true }])
+    expect(buildOperatorView(store, COMMUNITY)).toMatchObject({ retires: [], adopted: [] })
+  })
+
   test('rejects retire-requests for unknown agents and slots of other owners', async () => {
     const store = newStore()
     store.putSlot(slot('vps-1', { state: 'installed' }))

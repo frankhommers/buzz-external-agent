@@ -330,11 +330,8 @@ const applyRequest = async (
 ): Promise<string | undefined> => {
   if (block.type === 'install-request') {
     if (store.requests().some((r) => r.pubkey === block.pubkey && r.slot === block.slot)) return
-  } else if (
-    store
-      .retireRequests()
-      .some((r) => r.pubkey === block.pubkey && r.slot === block.slot && r.owner === sender)
-  )
+  } else if (store.retireRequests().some((r) => r.pubkey === block.pubkey && r.owner === sender))
+    // Same key as addRetireRequest (owner, agent): one request per agent, never reopened.
     return
   if (sender !== context.owner) return 'not sent by this owner'
   const slot = slotNamed(store, block.slot)
