@@ -50,6 +50,10 @@ interface Options {
   sendError?: Error
   /** The viewer is also the configured operator, with vps-1 offered to self. */
   operatorIsViewer?: boolean
+  /** Holds every agent publish until it settles. */
+  publishGate?: Promise<void>
+  /** Runs while the agent profile is being published. */
+  duringPublish?: (pubkey: string) => void
 }
 
 const setup = (options: Options = {}) => {
@@ -122,6 +126,8 @@ const setup = (options: Options = {}) => {
         signal: given,
       })
       storedAtPublish.push(store.pending().some((p) => p.pubkey === event.pubkey))
+      await options.publishGate
+      options.duringPublish?.(event.pubkey)
       if (options.publishError) throw options.publishError
       published.push(event)
     },
@@ -378,6 +384,59 @@ describe('provision', () => {
     expect(result.pubkey).toBe(pending.pubkey)
     expect(authCalls).toHaveLength(1)
     expect(agentPublishes).toHaveLength(1)
+  })
+
+  test('an overlapping call for the same slot and name joins the first one', async () => {
+    let release = (): void => {}
+    const publishGate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const { provider, store, published, authCalls, agentPublishes } = setup({ publishGate })
+    const first = provider.provision(provisionInput())
+    const second = provider.provision(provisionInput())
+    release()
+
+    const [a, b] = await Promise.all([first, second])
+    expect(b.pubkey).toBe(a.pubkey)
+    expect(authCalls).toHaveLength(1)
+    expect(agentPublishes).toHaveLength(1)
+    expect(published).toHaveLength(1)
+    expect(store.pendingFor('vps-1')?.pubkey).toBe(a.pubkey)
+  })
+
+  test('an overlapping call for the same slot with another name throws', async () => {
+    let release = (): void => {}
+    const publishGate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const { provider, store, authCalls } = setup({ publishGate })
+    const first = provider.provision(provisionInput())
+    const second = provider.provision(provisionInput({ name: 'Other' }))
+    release()
+    await expect(second).rejects.toThrow('This server is still being set up; wait for it to finish')
+
+    const { pubkey } = await first
+    expect(authCalls).toEqual([pubkey])
+    expect(store.pendingFor('vps-1')?.pubkey).toBe(pubkey)
+  })
+
+  test('a later call for the slot runs again once the first has settled', async () => {
+    const options: Options = { publishError: new Error('relay refused') }
+    const { provider, authCalls } = setup(options)
+    await expect(provider.provision(provisionInput())).rejects.toThrow('relay refused')
+    delete options.publishError
+    await provider.provision(provisionInput())
+    expect(authCalls).toHaveLength(2)
+  })
+
+  test('throws when its pending setup is gone once the profile is published', async () => {
+    const { provider, store, published } = setup({
+      duringPublish: (pubkey) => store.deletePending(pubkey),
+    })
+    await expect(provider.provision(provisionInput())).rejects.toThrow(
+      'The setup for this server changed while it was being created; try again',
+    )
+    expect(published).toHaveLength(1)
   })
 
   test('publishes nothing when the setup cannot be stored', async () => {

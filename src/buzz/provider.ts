@@ -43,6 +43,8 @@ const RETIRE_FIRST = 'Retire this agent first, then delete it again'
 const OTHER_COMMUNITY = "Switch to this agent's community in Buzz, then try again"
 const RETIRING = 'This agent is retired or being retired; it cannot be installed again'
 const NOT_PUBLISHED = 'The agent profile could not be published; retire this agent and try again'
+const SETTING_UP = 'This server is still being set up; wait for it to finish'
+const SETUP_CHANGED = 'The setup for this server changed while it was being created; try again'
 
 const operatorOf = (store: Store): string => {
   const operator = store.settings().operator?.trim()
@@ -75,7 +77,13 @@ const resultOf = (pending: PendingSetup): { pubkey: string; picture?: string } =
 const authOf = (pending: PendingSetup): NipOaTag | undefined =>
   parseNipOaTag(pending.profile.tags.find((tag) => tag[0] === 'auth'))
 
+type ProvisionInput = Parameters<RemoteAgentType['provision']>[0]
+type Provisioned = Awaited<ReturnType<RemoteAgentType['provision']>>
+
 export const createProvider = (deps: ProviderDeps): RemoteAgentType => {
+  /** Running provisions per community and slot: a second must not replace the first's setup. */
+  const inFlight = new Map<string, { name: string; result: Promise<Provisioned> }>()
+
   const open = async (): Promise<{ viewer: string; store: Store }> => {
     const { origin, viewer } = await deps.relay.ready()
     return { viewer, store: deps.storeFor({ origin, viewer }) }
@@ -103,68 +111,94 @@ export const createProvider = (deps: ProviderDeps): RemoteAgentType => {
     return tag
   }
 
-  return {
-    provision: async ({ name, picture, community, config, signal }) => {
-      signal.throwIfAborted()
-      const { viewer, store } = await open()
-      operatorOf(store)
-      const slot = slotOf(config)
-      const offer = store.offers().find((o) => o.slot === slot && o.community === community)
-      if (slot === undefined || offer === undefined) throw new Error(NO_SLOT)
-      const host = parseHostKey(offer.hostKey)
+  const provisionOnce = async ({
+    name,
+    picture,
+    community,
+    config,
+    signal,
+  }: ProvisionInput): Promise<Provisioned> => {
+    signal.throwIfAborted()
+    const { viewer, store } = await open()
+    operatorOf(store)
+    const slot = slotOf(config)
+    const offer = store.offers().find((o) => o.slot === slot && o.community === community)
+    if (slot === undefined || offer === undefined) throw new Error(NO_SLOT)
+    const host = parseHostKey(offer.hostKey)
 
-      const existing = store.pendingFor(slot)
-      if (existing !== undefined) {
-        if (existing.community !== community || existing.hostFingerprint !== host.fingerprint) {
-          throw new Error(SLOT_TAKEN)
-        }
-        const status = store.statusOf(existing.pubkey)
-        if (status !== undefined && status !== 'awaiting-install') throw new Error(SLOT_IN_USE)
-        // A retry: the key was dropped after the first attempt, so the profile cannot be
-        // published again as the agent. It counts only if that attempt reached the relay.
-        const profile = await deps.relay.readProfile(existing.pubkey)
-        if (profile !== undefined && profile.pubkey === existing.pubkey && verifyEvent(profile)) {
-          return resultOf(existing)
-        }
-        if (status !== undefined) throw new Error(NOT_PUBLISHED)
+    const existing = store.pendingFor(slot)
+    if (existing !== undefined) {
+      if (existing.community !== community || existing.hostFingerprint !== host.fingerprint) {
+        throw new Error(SLOT_TAKEN)
       }
-      if (!isValidName(name)) throw new Error(BAD_NAME)
-      // Never published nor sent: only its local ciphertext existed, so start over with a new key.
-      if (existing !== undefined) store.deletePending(existing.pubkey)
+      const status = store.statusOf(existing.pubkey)
+      if (status !== undefined && status !== 'awaiting-install') throw new Error(SLOT_IN_USE)
+      // A retry: the key was dropped after the first attempt, so the profile cannot be
+      // published again as the agent. It counts only if that attempt reached the relay.
+      const profile = await deps.relay.readProfile(existing.pubkey)
+      if (profile !== undefined && profile.pubkey === existing.pubkey && verifyEvent(profile)) {
+        return resultOf(existing)
+      }
+      if (status !== undefined) throw new Error(NOT_PUBLISHED)
+    }
+    if (!isValidName(name)) throw new Error(BAD_NAME)
+    // Never published nor sent: only its local ciphertext existed, so start over with a new key.
+    if (existing !== undefined) store.deletePending(existing.pubkey)
 
+    signal.throwIfAborted()
+    const secret = generateSecretKey()
+    try {
+      const pubkey = publicKeyHex(secret)
+      const auth = await authorize(pubkey, viewer, signal)
       signal.throwIfAborted()
-      const secret = generateSecretKey()
+      const profile = buildAgentProfile({
+        secret,
+        name,
+        ...withPicture(picture),
+        auth,
+        createdAt: Math.floor(deps.now() / MS_PER_SECOND),
+      })
+      const sealed = await sealSecret(secret, host)
+      const pending: PendingSetup = {
+        slot,
+        community,
+        owner: viewer,
+        hostFingerprint: host.fingerprint,
+        pubkey,
+        sealed,
+        profile,
+        name,
+        ...withPicture(picture),
+      }
+      // Stored before the profile goes public, so a published key is always one we hold
+      // sealed; if publishing fails, a retry checks whether the profile reached the relay.
+      store.putPending(pending)
+      await deps.publishAsAgent({ relay: community, secret, auth, event: profile, signal })
+      // Buzz records the returned key; without its pending setup, activate would fail.
+      if (store.pendingFor(slot)?.pubkey !== pubkey) throw new Error(SETUP_CHANGED)
+      return resultOf(pending)
+    } finally {
+      // Only now: publishing signs the relay sign-in with the agent key.
+      secret.fill(0)
+    }
+  }
+
+  return {
+    // Buzz may call again while the first call still publishes (dialog closed and reopened).
+    provision: async (input) => {
+      input.signal.throwIfAborted()
+      const key = `${input.community}\n${slotOf(input.config) ?? ''}`
+      const running = inFlight.get(key)
+      if (running !== undefined) {
+        if (running.name !== input.name) throw new Error(SETTING_UP)
+        return running.result
+      }
+      const result = provisionOnce(input)
+      inFlight.set(key, { name: input.name, result })
       try {
-        const pubkey = publicKeyHex(secret)
-        const auth = await authorize(pubkey, viewer, signal)
-        signal.throwIfAborted()
-        const profile = buildAgentProfile({
-          secret,
-          name,
-          ...withPicture(picture),
-          auth,
-          createdAt: Math.floor(deps.now() / MS_PER_SECOND),
-        })
-        const sealed = await sealSecret(secret, host)
-        const pending: PendingSetup = {
-          slot,
-          community,
-          owner: viewer,
-          hostFingerprint: host.fingerprint,
-          pubkey,
-          sealed,
-          profile,
-          name,
-          ...withPicture(picture),
-        }
-        // Stored before the profile goes public, so a published key is always one we hold
-        // sealed; if publishing fails, a retry checks whether the profile reached the relay.
-        store.putPending(pending)
-        await deps.publishAsAgent({ relay: community, secret, auth, event: profile, signal })
-        return resultOf(pending)
+        return await result
       } finally {
-        // Only now: publishing signs the relay sign-in with the agent key.
-        secret.fill(0)
+        inFlight.delete(key)
       }
     },
 
