@@ -7,6 +7,7 @@ import { profileOwner, type SignedEvent, verifyEvent } from '../../src/core/even
 import { encodeNpub, generateSecretKey, publicKeyHex } from '../../src/core/keys'
 import type { Block, SlotOffer } from '../../src/core/messages'
 import type { NipOaTag } from '../../src/core/nipoa'
+import { parseHostKey } from '../../src/core/seal'
 import { createStore } from '../../src/core/store'
 import { MemoryStorage } from '../helpers/memory-storage'
 import { signNipOaForTests } from '../helpers/nipoa'
@@ -45,6 +46,8 @@ interface Options {
   ownerSecret?: Uint8Array
   hostOwnerSecret?: Uint8Array
   publishError?: Error
+  /** The viewer is also the configured operator, with vps-1 offered to self. */
+  operatorIsViewer?: boolean
 }
 
 const setup = (options: Options = {}) => {
@@ -54,9 +57,21 @@ const setup = (options: Options = {}) => {
   const storage = new MemoryStorage()
   const scope = { origin: ORIGIN, viewer }
   const store = createStore(storage, scope)
-  const operator = 'operator' in options ? options.operator : encodeNpub(operatorHex)
+  const operator = options.operatorIsViewer
+    ? encodeNpub(viewer)
+    : 'operator' in options
+      ? options.operator
+      : encodeNpub(operatorHex)
   if (operator !== undefined) store.setSettings({ operator })
   store.addOffer(offerFor('vps-1'))
+  if (options.operatorIsViewer)
+    store.putSlot({
+      slot: 'vps-1',
+      label: 'My VPS',
+      host: parseHostKey(hostKeyLine(7)),
+      owner: viewer,
+      state: 'offered',
+    })
 
   const published: SignedEvent[] = []
   const blocks: { to: string; block: Block }[] = []
@@ -273,6 +288,38 @@ describe('activate', () => {
       sealed: pending?.sealed ?? '',
     })
     expect(store.statusOf(pubkey)).toBe('awaiting-install')
+  })
+
+  test('when the viewer is the operator, the request is listed locally without a DM', async () => {
+    const { provider, store, blocks } = setup({ operatorIsViewer: true })
+    const { pubkey } = await provider.provision(provisionInput())
+    const auth = signNipOaForTests(generateSecretKey(), pubkey)
+    await provider.activate({
+      pubkey,
+      name: 'Helper',
+      community: COMMUNITY,
+      auth,
+      signal: signal(),
+    })
+    expect(blocks).toHaveLength(0)
+    expect(store.requests()).toMatchObject([{ type: 'install-request', slot: 'vps-1', pubkey }])
+    expect(store.slots()[0]?.state).toBe('requested')
+    expect(store.statusOf(pubkey)).toBe('awaiting-install')
+  })
+
+  test('when the viewer is the operator, the local request passes the same gates', async () => {
+    const { provider, store, blocks } = setup({ operatorIsViewer: true })
+    const { pubkey } = await provider.provision(provisionInput())
+    const slot = store.slots()[0]
+    if (slot === undefined) throw new Error('missing slot')
+    store.putSlot({ ...slot, state: 'installed' })
+    const auth = signNipOaForTests(generateSecretKey(), pubkey)
+    await expect(
+      provider.activate({ pubkey, name: 'Helper', community: COMMUNITY, auth, signal: signal() }),
+    ).rejects.toThrow('not a server offered to this owner')
+    expect(blocks).toHaveLength(0)
+    expect(store.requests()).toEqual([])
+    expect(store.statusOf(pubkey)).toBeUndefined()
   })
 
   test('unknown pubkey throws', async () => {

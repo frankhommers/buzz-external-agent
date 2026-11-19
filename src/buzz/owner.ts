@@ -2,6 +2,7 @@ import { ADOPTED_SLOT, RUNTIME } from '../constants'
 import { decodeNpub } from '../core/keys'
 import { type AcceptContext, acceptBlock, type RetireRequest } from '../core/messages'
 import { type AgentStatus, operatorPubkey, type Store } from '../core/store'
+import { receiveOwnRequest } from './operator'
 import { createPoll } from './poll'
 import type { BlockMessage, Relay } from './relay'
 import type { AgentSummary, AgentsSnapshot } from './types'
@@ -160,14 +161,20 @@ export const createOwner = (deps: OwnerDeps): Owner => {
     },
 
     retire: async (pubkey) => {
-      const { store } = await open()
+      const { store, viewer } = await open()
       const operator = operatorHex(store)
       if (operator === undefined) throw new Error(NO_OPERATOR)
       const ours = ourAgents(deps.agents.snapshot().agents).some((a) => a.pubkey === pubkey)
       if (!ours || isRetiring(store.statusOf(pubkey))) throw new Error(NOT_RETIRABLE)
       const slot = store.pending().find((p) => p.pubkey === pubkey)?.slot ?? ADOPTED_SLOT
       const request: RetireRequest = { v: 1, type: 'retire-request', slot, pubkey }
-      await deps.relay.sendBlock(operator, request)
+      // The owner is the operator too: list the request locally, no DM to self.
+      if (operator === viewer)
+        await receiveOwnRequest(store, request, {
+          viewer,
+          readProfile: (key) => deps.relay.readProfile(key),
+        })
+      else await deps.relay.sendBlock(operator, request)
       store.setStatus(pubkey, 'retire-requested')
       notify()
     },

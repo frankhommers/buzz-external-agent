@@ -4,12 +4,14 @@ import { applyOperatorBlocks, buildOwnerView, createOwner } from '../../src/buzz
 import type { BlockMessage, Relay } from '../../src/buzz/relay'
 import type { AgentSummary, AgentsSnapshot } from '../../src/buzz/types'
 import { RUNTIME } from '../../src/constants'
-import type { SignedEvent } from '../../src/core/events'
-import { encodeNpub } from '../../src/core/keys'
+import { buildAgentProfile, type SignedEvent } from '../../src/core/events'
+import { encodeNpub, publicKeyHex } from '../../src/core/keys'
 import type { Block, SlotOffer } from '../../src/core/messages'
+import { parseHostKey } from '../../src/core/seal'
 import { createStore, type PendingSetup, type Store } from '../../src/core/store'
 import { agentSummary } from '../helpers/fake-session'
 import { MemoryStorage } from '../helpers/memory-storage'
+import { signNipOaForTests } from '../helpers/nipoa'
 
 const ORIGIN = 'https://relay.example.com'
 const COMMUNITY = 'wss://relay.example.com'
@@ -361,5 +363,99 @@ describe('createOwner', () => {
       offers: [],
       agents: [{ pubkey: agentA, name: 'Robo', status: 'Hosted on your server', canRetire: true }],
     })
+  })
+})
+
+describe('createOwner when the viewer is the operator', () => {
+  const viewerSecret = new Uint8Array(32).fill(11)
+  const self = publicKeyHex(viewerSecret)
+  const agentSecret = new Uint8Array(32).fill(12)
+  const ownAgent = publicKeyHex(agentSecret)
+  const profileBy = (secret: Uint8Array): SignedEvent =>
+    buildAgentProfile({
+      secret: agentSecret,
+      name: 'Mine',
+      auth: signNipOaForTests(secret, ownAgent),
+      createdAt: 1,
+    })
+
+  const selfSetup = (profile: SignedEvent | undefined) => {
+    const storage = new MemoryStorage()
+    const store = createStore(storage, { origin: ORIGIN, viewer: self })
+    store.setSettings({ operator: encodeNpub(self) })
+    const sentBlocks: Block[] = []
+    const opened: string[] = []
+    const owner = createOwner({
+      relay: {
+        ...({} as Relay),
+        ready: async () => ({ origin: ORIGIN, viewer: self, community: COMMUNITY }),
+        readProfile: async (pubkey) => (pubkey === ownAgent ? profile : undefined),
+        sendBlock: async (_to, block) => void sentBlocks.push(block),
+        readBlocks: async (pubkey) => {
+          opened.push(pubkey)
+          return []
+        },
+      },
+      storeFor: (scope) => createStore(storage, scope),
+      agents: {
+        snapshot: () => ({
+          status: 'ready',
+          agents: [agentSummary(ownAgent, 'hosted', { type: RUNTIME })],
+          running: [],
+        }),
+      },
+    })
+    return { owner, store, sentBlocks, opened }
+  }
+
+  test('retiring an own adopted agent lists the request locally without a DM', async () => {
+    const fake = selfSetup(profileBy(viewerSecret))
+    await fake.owner.retire(ownAgent)
+    expect(fake.sentBlocks).toEqual([])
+    expect(fake.store.retireRequests()).toEqual([
+      {
+        v: 1,
+        type: 'retire-request',
+        slot: 'adopted',
+        pubkey: ownAgent,
+        owner: self,
+        name: 'Mine',
+      },
+    ])
+    expect(fake.store.statusOf(ownAgent)).toBe('retire-requested')
+  })
+
+  test('a local retire is refused when the profile names another owner', async () => {
+    const fake = selfSetup(profileBy(new Uint8Array(32).fill(13)))
+    await expect(fake.owner.retire(ownAgent)).rejects.toThrow('agent is owned by someone else')
+    expect(fake.sentBlocks).toEqual([])
+    expect(fake.store.retireRequests()).toEqual([])
+    expect(fake.store.statusOf(ownAgent)).toBeUndefined()
+  })
+
+  test('retiring an own agent on a slot offered to self is listed locally', async () => {
+    const fake = selfSetup(undefined)
+    fake.store.putSlot({
+      slot: 'vps-2',
+      label: 'Mine',
+      host: parseHostKey(hostKeyLine(7)),
+      owner: self,
+      state: 'installed',
+    })
+    fake.store.putPending({ ...pendingFor('vps-2', ownAgent), owner: self })
+    fake.store.addRequest({
+      v: 1,
+      type: 'install-request',
+      slot: 'vps-2',
+      pubkey: ownAgent,
+      name: 'Mine',
+      auth: signNipOaForTests(viewerSecret, ownAgent),
+      sealed: '-----BEGIN AGE ENCRYPTED FILE-----',
+    })
+    await fake.owner.retire(ownAgent)
+    expect(fake.sentBlocks).toEqual([])
+    expect(fake.store.retireRequests()).toEqual([
+      { v: 1, type: 'retire-request', slot: 'vps-2', pubkey: ownAgent, owner: self },
+    ])
   })
 })

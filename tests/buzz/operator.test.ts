@@ -7,6 +7,8 @@ import {
   handoff,
   importSlots,
   offerSlot,
+  type RequestId,
+  receiveOwnRequest,
 } from '../../src/buzz/operator'
 import type { BlockMessage, Relay } from '../../src/buzz/relay'
 import { buildAgentProfile, type SignedEvent } from '../../src/core/events'
@@ -26,7 +28,8 @@ import { signNipOaForTests } from '../helpers/nipoa'
 const ORIGIN = 'https://relay.example.com'
 const COMMUNITY = 'wss://relay.example.com'
 const secretOf = (byte: number): Uint8Array => new Uint8Array(32).fill(byte)
-const operator = publicKeyHex(secretOf(1))
+const operatorSecret = secretOf(1)
+const operator = publicKeyHex(operatorSecret)
 const ownerSecret = secretOf(2)
 const owner = publicKeyHex(ownerSecret)
 const strangerSecret = secretOf(3)
@@ -80,6 +83,11 @@ const retireRequest = (pubkey = agent, slotId = 'vps-1'): RetireRequest => ({
 })
 
 const from = (sender: string, block: Block): BlockMessage => ({ sender, block })
+const idOf = (pubkey = agent, slotId = 'vps-1', by = owner): RequestId => ({
+  slot: slotId,
+  pubkey,
+  owner: by,
+})
 const noProfile = async (): Promise<SignedEvent | undefined> => undefined
 const context = { operator, viewer: operator, owner, readProfile: noProfile }
 
@@ -305,7 +313,7 @@ describe('confirm', () => {
     store.putSlot(slot('vps-1', { state: 'requested' }))
     store.addRequest(installRequest())
     const { relay, sent } = fakeRelay()
-    await confirm(relay, store, 'installed', agent)
+    await confirm(relay, store, 'installed', idOf())
     expect(sent).toEqual([
       { to: owner, block: { v: 1, type: 'installed', slot: 'vps-1', pubkey: agent } },
     ])
@@ -318,7 +326,7 @@ describe('confirm', () => {
     store.addRequest(installRequest())
     store.addRetireRequest(storedRetire())
     const { relay, sent } = fakeRelay()
-    await confirm(relay, store, 'retired', agent)
+    await confirm(relay, store, 'retired', idOf())
     expect(sent).toEqual([
       { to: owner, block: { v: 1, type: 'retired', slot: 'vps-1', pubkey: agent } },
     ])
@@ -329,13 +337,15 @@ describe('confirm', () => {
     const store = newStore()
     store.addRetireRequest(storedRetire(agent, 'adopted', stranger))
     const { relay, sent } = fakeRelay()
-    await confirm(relay, store, 'retired', agent)
+    await confirm(relay, store, 'retired', idOf(agent, 'adopted', stranger))
     expect(sent).toEqual([
       { to: stranger, block: { v: 1, type: 'retired', slot: 'adopted', pubkey: agent } },
     ])
     expect(store.slots()).toEqual([])
     expect(buildOperatorView(store).adopted).toEqual([])
-    await expect(confirm(relay, store, 'retired', agent)).rejects.toThrow()
+    await expect(
+      confirm(relay, store, 'retired', idOf(agent, 'adopted', stranger)),
+    ).rejects.toThrow()
     expect(sent).toHaveLength(1)
   })
 
@@ -343,7 +353,9 @@ describe('confirm', () => {
     const store = newStore()
     store.addRetireRequest(storedRetire(agent, 'adopted'))
     const { relay } = fakeRelay({ sendError: new Error('not sent') })
-    await expect(confirm(relay, store, 'retired', agent)).rejects.toThrow('not sent')
+    await expect(confirm(relay, store, 'retired', idOf(agent, 'adopted'))).rejects.toThrow(
+      'not sent',
+    )
     expect(buildOperatorView(store).adopted.map((a) => a.pubkey)).toEqual([agent])
   })
 
@@ -352,7 +364,7 @@ describe('confirm', () => {
     store.putSlot(slot('vps-1', { state: 'requested' }))
     store.addRequest(installRequest())
     const { relay } = fakeRelay({ sendError: new Error('not sent') })
-    await expect(confirm(relay, store, 'installed', agent)).rejects.toThrow('not sent')
+    await expect(confirm(relay, store, 'installed', idOf())).rejects.toThrow('not sent')
     expect(store.slots()[0]?.state).toBe('requested')
   })
 
@@ -361,9 +373,12 @@ describe('confirm', () => {
     store.putSlot(slot('vps-1', { state: 'installed' }))
     store.addRequest(installRequest())
     const { relay, sent } = fakeRelay()
-    await expect(confirm(relay, store, 'installed', otherAgent)).rejects.toThrow()
-    await expect(confirm(relay, store, 'installed', agent)).rejects.toThrow()
-    await expect(confirm(relay, store, 'retired', agent)).rejects.toThrow()
+    await expect(confirm(relay, store, 'installed', idOf(otherAgent))).rejects.toThrow()
+    await expect(confirm(relay, store, 'installed', idOf())).rejects.toThrow()
+    await expect(
+      confirm(relay, store, 'installed', idOf(agent, 'vps-1', stranger)),
+    ).rejects.toThrow()
+    await expect(confirm(relay, store, 'retired', idOf())).rejects.toThrow()
     expect(sent).toEqual([])
   })
 })
@@ -584,6 +599,143 @@ describe('applyOwnerBlocks: adopted agents and re-set-up slots', () => {
   })
 })
 
+describe('two owners and one agent pubkey', () => {
+  test("another owner cannot replace, overwrite or be told about an owner's agent", async () => {
+    const store = newStore()
+    store.putSlot(slot('vps-1', { state: 'installed' }))
+    store.putSlot(slot('vps-2', { owner: stranger }))
+    const ownersRequest = installRequest()
+    store.addRequest(ownersRequest)
+    store.addRetireRequest(storedRetire())
+    const rejected = await applyOwnerBlocks(
+      store,
+      [
+        from(stranger, installRequest({ slot: 'vps-2' }, strangerSecret)),
+        from(stranger, retireRequest(agent, 'vps-2')),
+        from(stranger, retireRequest(agent, 'vps-1')),
+        from(stranger, retireRequest(agent, 'adopted')),
+      ],
+      { ...context, owner: stranger, readProfile: async () => agentProfile() },
+    )
+    expect(rejected.map((r) => r.reason)).toEqual([
+      'agent already requested on another server',
+      'not a server offered to this owner',
+      'not a server offered to this owner',
+      'agent is owned by someone else',
+    ])
+    expect(store.requests()).toEqual([ownersRequest])
+    expect(store.retireRequests()).toEqual([storedRetire()])
+    expect(store.slots().map((s) => s.state)).toEqual(['installed', 'offered'])
+
+    const { relay, sent } = fakeRelay()
+    for (const id of [idOf(agent, 'vps-1', stranger), idOf(agent, 'vps-2', stranger)])
+      await expect(confirm(relay, store, 'retired', id)).rejects.toThrow()
+    await expect(
+      confirm(relay, store, 'retired', idOf(agent, 'adopted', stranger)),
+    ).rejects.toThrow()
+    await confirm(relay, store, 'retired', idOf())
+    expect(sent.map((m) => m.to)).toEqual([owner])
+  })
+})
+
+describe('the operator as owner: local requests, no DM', () => {
+  const selfSlot = (state: OperatorSlot['state'] = 'offered'): OperatorSlot =>
+    slot('vps-1', { owner: operator, state })
+  const ownRequest = (): InstallRequest => installRequest({}, operatorSecret)
+  const local = (readProfile = noProfile) => ({ viewer: operator, readProfile })
+
+  test('an own install-request passes the same gates and is listed', async () => {
+    const store = newStore()
+    store.putSlot(selfSlot())
+    const request = ownRequest()
+    await receiveOwnRequest(store, request, local())
+    expect(store.requests()).toEqual([request])
+    expect(store.slots()[0]?.state).toBe('requested')
+  })
+
+  test('an own install-request is refused without a matching proof or a slot offered to self', async () => {
+    const proofOfOther = newStore()
+    proofOfOther.putSlot(selfSlot())
+    await expect(receiveOwnRequest(proofOfOther, installRequest(), local())).rejects.toThrow(
+      'owner proof names someone else',
+    )
+    expect(proofOfOther.requests()).toEqual([])
+    const notOffered = newStore()
+    notOffered.putSlot(slot('vps-1'))
+    await expect(receiveOwnRequest(notOffered, ownRequest(), local())).rejects.toThrow(
+      'not a server offered to this owner',
+    )
+    expect(notOffered.requests()).toEqual([])
+  })
+
+  test('an own adopted retire-request needs a profile owned by self', async () => {
+    const store = newStore()
+    const block = retireRequest(agent, 'adopted')
+    await expect(
+      receiveOwnRequest(
+        store,
+        block,
+        local(async () => agentProfile()),
+      ),
+    ).rejects.toThrow('agent is owned by someone else')
+    expect(store.retireRequests()).toEqual([])
+    await receiveOwnRequest(
+      store,
+      block,
+      local(async () => agentProfile(operatorSecret)),
+    )
+    expect(store.retireRequests()).toEqual([{ ...block, owner: operator, name: 'Old agent' }])
+  })
+
+  test('confirm for an own agent updates the owner status locally without a DM', async () => {
+    const store = newStore()
+    store.putSlot(selfSlot('requested'))
+    store.addRequest(ownRequest())
+    const { relay, sent } = fakeRelay()
+    await confirm(relay, store, 'installed', idOf(agent, 'vps-1', operator))
+    expect(store.statusOf(agent)).toBe('installed')
+    expect(store.slots()[0]?.state).toBe('installed')
+    store.addRetireRequest(storedRetire(agent, 'vps-1', operator))
+    await confirm(relay, store, 'retired', idOf(agent, 'vps-1', operator))
+    expect(store.statusOf(agent)).toBe('retired')
+    expect(store.slots()[0]?.state).toBe('retired')
+    expect(sent).toEqual([])
+  })
+
+  test('a local installed never downgrades a retiring agent', async () => {
+    const store = newStore()
+    store.putSlot(selfSlot('requested'))
+    store.addRequest(ownRequest())
+    store.setStatus(agent, 'retire-requested')
+    const { relay } = fakeRelay()
+    await confirm(relay, store, 'installed', idOf(agent, 'vps-1', operator))
+    expect(store.statusOf(agent)).toBe('retire-requested')
+  })
+
+  test('offering a slot to self adds the offer locally without a DM', async () => {
+    const store = newStore()
+    const { relay, sent } = fakeRelay()
+    await offerSlot(relay, store, {
+      slot: 'vps-1',
+      label: 'Mine',
+      hostKeyText: hostKeyLine(7),
+      owner: encodeNpub(operator),
+    })
+    expect(sent).toEqual([])
+    expect(store.offers()).toEqual([
+      {
+        v: 1,
+        type: 'slot-offer',
+        slot: 'vps-1',
+        label: 'Mine',
+        hostKey: hostKeyLine(7),
+        community: COMMUNITY,
+      },
+    ])
+    expect(store.slots()[0]).toMatchObject({ state: 'offered', owner: operator })
+  })
+})
+
 describe('buildOperatorView', () => {
   test('shows slots, open install requests with their handoff, and open retire requests', () => {
     const store = newStore()
@@ -606,10 +758,17 @@ describe('buildOperatorView', () => {
       pubkey: agent,
       name: 'Robo',
       slot: 'vps-1',
+      id: idOf(),
       handoff: { filename: 'vps-1.age', command: "deploy 'vps-1'" },
     })
     expect(view.retires).toEqual([
-      { pubkey: otherAgent, slot: 'vps-2', label: 'Server vps-2', owner: encodeNpub(owner) },
+      {
+        id: idOf(otherAgent, 'vps-2'),
+        pubkey: otherAgent,
+        slot: 'vps-2',
+        label: 'Server vps-2',
+        owner: encodeNpub(owner),
+      },
     ])
   })
 
@@ -622,8 +781,13 @@ describe('buildOperatorView', () => {
     expect(view.owners).toEqual([encodeNpub(owner), encodeNpub(stranger)])
     expect(view.retires).toEqual([])
     expect(view.adopted).toEqual([
-      { pubkey: agent, name: 'Old agent', owner: encodeNpub(owner) },
-      { pubkey: otherAgent, name: encodeNpub(otherAgent), owner: encodeNpub(stranger) },
+      { id: idOf(agent, 'adopted'), pubkey: agent, name: 'Old agent', owner: encodeNpub(owner) },
+      {
+        id: idOf(otherAgent, 'adopted', stranger),
+        pubkey: otherAgent,
+        name: encodeNpub(otherAgent),
+        owner: encodeNpub(stranger),
+      },
     ])
     store.addRetireRequest({
       ...retireRequest(agent, 'adopted'),
@@ -710,6 +874,14 @@ describe('createOperator', () => {
       operator: encodeNpub(operator),
       owners: [owner, stranger],
     })
+  })
+
+  test('poll never opens a DM with the operator itself', async () => {
+    const fake = setup()
+    fake.store.setSettings({ operator: encodeNpub(operator), owners: [operator] })
+    fake.store.putSlot(slot('vps-1', { owner: operator }))
+    await fake.op.poll()
+    expect(fake.readsFrom).toEqual([])
   })
 
   test('poll does nothing for a viewer that is not the operator', async () => {

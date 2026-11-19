@@ -10,6 +10,7 @@ import {
   isSlotId,
   isSlotLabel,
   type Retired,
+  type RetireRequest,
   type SlotOffer,
 } from '../core/messages'
 import { verifyNipOa } from '../core/nipoa'
@@ -69,7 +70,11 @@ export type SlotRow = {
   owner: string
   state: OperatorSlot['state']
 }
+/** Which request a confirmation is for: its slot, agent and owner (hex). */
+export type RequestId = { slot: string; pubkey: string; owner: string }
+
 export type InstallRow = {
+  id: RequestId
   pubkey: string
   name: string
   slot: string
@@ -78,9 +83,15 @@ export type InstallRow = {
   handoff: Handoff
   commandError?: string
 }
-export type RetireRow = { pubkey: string; slot: string; label: string; owner: string }
+export type RetireRow = {
+  id: RequestId
+  pubkey: string
+  slot: string
+  label: string
+  owner: string
+}
 /** A retire request for an existing agent brought into Buzz (no slot). */
-export type AdoptedRetireRow = { pubkey: string; name: string; owner: string }
+export type AdoptedRetireRow = { id: RequestId; pubkey: string; name: string; owner: string }
 export type OperatorView = {
   template: string
   /** Known owners (npubs) whose DMs are read besides slot owners. */
@@ -102,6 +113,27 @@ const messageOf = (error: unknown): string =>
 
 const slotNamed = (store: Store, slot: string): OperatorSlot | undefined =>
   store.slots().find((s) => s.slot === slot)
+
+/**
+ * Sends an operator → owner block. When that owner is the operator itself, there is no DM:
+ * the block is applied locally the way the owner side applies it (applyOperatorBlocks).
+ */
+const deliver = async (
+  relay: Pick<Relay, 'ready' | 'sendBlock'>,
+  store: Store,
+  to: string,
+  block: SlotOffer | Installed | Retired,
+): Promise<void> => {
+  const { viewer } = await relay.ready()
+  if (to !== viewer) return relay.sendBlock(to, block)
+  if (block.type === 'slot-offer') store.addOffer(block)
+  else if (block.type === 'retired') store.markRetired(block.pubkey)
+  else {
+    // A late installed never downgrades an agent that is being retired.
+    const status = store.statusOf(block.pubkey)
+    if (status !== 'retire-requested' && status !== 'retired') store.markInstalled(block.pubkey)
+  }
+}
 
 const checkSlotId = (slot: string): void => {
   if (!isSlotId(slot)) throw new Error(BAD_SLOT_ID)
@@ -134,7 +166,7 @@ export const offerSlot = async (
   const { community } = await relay.ready()
   store.putSlot({ slot, label, host, state: 'open' })
   const offer: SlotOffer = { v: 1, type: 'slot-offer', slot, label, hostKey: host.line, community }
-  await relay.sendBlock(owner, offer)
+  await deliver(relay, store, owner, offer)
   store.putSlot({ slot, label, host, owner, state: 'offered' })
 }
 
@@ -213,32 +245,37 @@ export const handoff = (
   return result
 }
 
-/** Tells the agent's owner it is installed or retired, then records that. */
+/** Tells the request's owner the agent is installed or retired, then records that. */
 export const confirm = async (
-  relay: Pick<Relay, 'sendBlock'>,
+  relay: Pick<Relay, 'ready' | 'sendBlock'>,
   store: Store,
   kind: 'installed' | 'retired',
-  pubkey: string,
+  id: RequestId,
 ): Promise<void> => {
+  const { slot: slotId, pubkey, owner } = id
   if (kind === 'installed') {
-    const request = store.requests().find((r) => r.pubkey === pubkey)
-    const slot = request === undefined ? undefined : slotNamed(store, request.slot)
-    if (slot?.owner === undefined || slot.state !== 'requested') throw new Error(UNKNOWN_REQUEST)
-    const block: Installed = { v: 1, type: 'installed', slot: slot.slot, pubkey }
-    await relay.sendBlock(slot.owner, block)
+    const request = store.requests().find((r) => r.slot === slotId && r.pubkey === pubkey)
+    const slot = request === undefined ? undefined : slotNamed(store, slotId)
+    if (slot?.owner !== owner || slot.state !== 'requested') throw new Error(UNKNOWN_REQUEST)
+    const block: Installed = { v: 1, type: 'installed', slot: slotId, pubkey }
+    await deliver(relay, store, owner, block)
     store.putSlot({ ...slot, state: 'installed' })
     return
   }
-  const request = store.retireRequests().find((r) => r.pubkey === pubkey && r.retired !== true)
+  const request = store
+    .retireRequests()
+    .find(
+      (r) => r.slot === slotId && r.pubkey === pubkey && r.owner === owner && r.retired !== true,
+    )
   if (request === undefined) throw new Error(UNKNOWN_REQUEST)
-  const block: Retired = { v: 1, type: 'retired', slot: request.slot, pubkey }
-  if (request.slot === ADOPTED_SLOT) {
+  const block: Retired = { v: 1, type: 'retired', slot: slotId, pubkey }
+  if (slotId === ADOPTED_SLOT) {
     // No slot: the request's verified sender is the agent's owner.
-    await relay.sendBlock(request.owner, block)
+    await deliver(relay, store, owner, block)
   } else {
-    const slot = slotNamed(store, request.slot)
-    if (slot?.owner === undefined || !RETIRABLE.has(slot.state)) throw new Error(UNKNOWN_REQUEST)
-    await relay.sendBlock(slot.owner, block)
+    const slot = slotNamed(store, slotId)
+    if (slot?.owner !== owner || !RETIRABLE.has(slot.state)) throw new Error(UNKNOWN_REQUEST)
+    await deliver(relay, store, owner, block)
     store.putSlot({ ...slot, state: 'retired' })
   }
   store.addRetireRequest({ ...request, retired: true })
@@ -267,13 +304,68 @@ const verifiedProfileOwner = (
     ? profileOwner(profile)
     : undefined
 
+interface RequestContext {
+  /** The owner the request comes from (the DM peer, or the operator itself). */
+  owner: string
+  readProfile(pubkey: string): Promise<SignedEvent | undefined>
+}
+
 /**
- * Applies requests from one owner's DM. An install-request is listed only when its owner proof
- * verifies, names the sender, and its slot was offered to that sender and is still open for it;
- * only the newest install-request per slot counts and replaces older ones. A retire-request needs
- * a slot offered to the sender with that agent requested on it, or, for an adopted agent, an
- * agent profile whose verified owner is the sender.
- * Returns what was refused; requests already listed are skipped silently.
+ * Lists one owner request, or returns why it was refused. An install-request is listed only when
+ * its owner proof verifies and names the sender, its slot was offered to that sender and is still
+ * open for it, and the agent is not requested on another slot; it replaces older requests for its
+ * slot. A retire-request needs a slot offered to the sender with that agent requested on it or, for
+ * an adopted agent, an agent profile whose verified owner is the sender.
+ * Requests already listed for this sender are skipped silently.
+ */
+const applyRequest = async (
+  store: Store,
+  sender: string,
+  block: InstallRequest | RetireRequest,
+  context: RequestContext,
+): Promise<string | undefined> => {
+  if (block.type === 'install-request') {
+    if (store.requests().some((r) => r.pubkey === block.pubkey && r.slot === block.slot)) return
+  } else if (
+    store
+      .retireRequests()
+      .some((r) => r.pubkey === block.pubkey && r.slot === block.slot && r.owner === sender)
+  )
+    return
+  if (sender !== context.owner) return 'not sent by this owner'
+  const slot = slotNamed(store, block.slot)
+  if (block.type === 'install-request') {
+    if (!verifyNipOa(block.auth, block.pubkey)) return 'owner proof does not verify'
+    if (block.auth[1] !== sender) return 'owner proof names someone else'
+    if (!offeredTo(slot, sender) || !REQUESTABLE.has(slot.state))
+      return 'not a server offered to this owner'
+    // A new key per setup: the same agent on another slot is someone else's request.
+    if (store.requests().some((r) => r.pubkey === block.pubkey && r.slot !== block.slot))
+      return 'agent already requested on another server'
+    store.putSlotRequest(block)
+    store.putSlot({ ...slot, state: 'requested' })
+    return
+  }
+  if (block.slot === ADOPTED_SLOT) {
+    const profile = await context.readProfile(block.pubkey)
+    const owner = verifiedProfileOwner(profile, block.pubkey)
+    if (owner === undefined) return 'agent profile missing or unverified'
+    if (owner !== sender) return 'agent is owned by someone else'
+    const name = profile === undefined ? undefined : profileName(profile)
+    store.addRetireRequest({ ...block, owner: sender, ...(name === undefined ? {} : { name }) })
+    return
+  }
+  if (!offeredTo(slot, sender) || !RETIRABLE.has(slot.state))
+    return 'not a server offered to this owner'
+  if (!store.requests().some((r) => r.pubkey === block.pubkey && r.slot === slot.slot))
+    return 'not an agent requested on this server'
+  store.addRetireRequest({ ...block, owner: sender })
+  return
+}
+
+/**
+ * Applies requests from one owner's DM (see applyRequest); only the newest install-request per
+ * slot counts. Returns what was refused.
  */
 export const applyOwnerBlocks = async (
   store: Store,
@@ -290,44 +382,27 @@ export const applyOwnerBlocks = async (
   for (const { sender, block } of accepted) {
     if (block.type !== 'install-request' && block.type !== 'retire-request') continue
     if (block.type === 'install-request' && newestInstall.get(block.slot) !== block) continue
-    const refuse = (reason: string): void => {
+    const reason = await applyRequest(store, sender, block, context)
+    if (reason !== undefined)
       rejected.push({ type: block.type, slot: block.slot, pubkey: block.pubkey, reason })
-    }
-    const known = (
-      block.type === 'install-request' ? store.requests() : store.retireRequests()
-    ).some((r) => r.pubkey === block.pubkey && r.slot === block.slot)
-    if (known) continue
-    if (sender !== context.owner) {
-      refuse('not sent by this owner')
-      continue
-    }
-    const slot = slotNamed(store, block.slot)
-    if (block.type === 'install-request') {
-      if (!verifyNipOa(block.auth, block.pubkey)) refuse('owner proof does not verify')
-      else if (block.auth[1] !== sender) refuse('owner proof names someone else')
-      else if (!offeredTo(slot, sender) || !REQUESTABLE.has(slot.state))
-        refuse('not a server offered to this owner')
-      else {
-        store.putSlotRequest(block)
-        store.putSlot({ ...slot, state: 'requested' })
-      }
-    } else if (block.slot === ADOPTED_SLOT) {
-      const profile = await context.readProfile(block.pubkey)
-      const owner = verifiedProfileOwner(profile, block.pubkey)
-      const name = profile === undefined ? undefined : profileName(profile)
-      if (owner === undefined) refuse('agent profile missing or unverified')
-      else if (owner !== sender) refuse('agent is owned by someone else')
-      else
-        store.addRetireRequest({ ...block, owner: sender, ...(name === undefined ? {} : { name }) })
-    } else if (!offeredTo(slot, sender) || !RETIRABLE.has(slot.state)) {
-      refuse('not a server offered to this owner')
-    } else if (!store.requests().some((r) => r.pubkey === block.pubkey && r.slot === slot.slot)) {
-      refuse('not an agent requested on this server')
-    } else {
-      store.addRetireRequest({ ...block, owner: sender })
-    }
   }
   return rejected
+}
+
+/**
+ * The operator's own request as owner: no DM to self, the same gates as a received request.
+ * Throws the refusal.
+ */
+export const receiveOwnRequest = async (
+  store: Store,
+  block: InstallRequest | RetireRequest,
+  context: { viewer: string; readProfile(pubkey: string): Promise<SignedEvent | undefined> },
+): Promise<void> => {
+  const reason = await applyRequest(store, context.viewer, block, {
+    owner: context.viewer,
+    readProfile: context.readProfile,
+  })
+  if (reason !== undefined) throw new Error(`The request was refused: ${reason}`)
 }
 
 const npubOf = (pubkey: string | undefined): string =>
@@ -346,6 +421,7 @@ export const buildOperatorView = (store: Store): OperatorView => {
     const slot = byId.get(request.slot)
     if (slot?.state !== 'requested') continue
     const row = {
+      id: { slot: slot.slot, pubkey: request.pubkey, owner: slot.owner ?? '' },
       pubkey: request.pubkey,
       name: request.name,
       slot: slot.slot,
@@ -362,12 +438,13 @@ export const buildOperatorView = (store: Store): OperatorView => {
   const retireRequests = store.retireRequests()
   for (const request of retireRequests) {
     const slot = request.slot === ADOPTED_SLOT ? undefined : byId.get(request.slot)
-    if (slot === undefined || !RETIRABLE.has(slot.state)) continue
+    if (slot === undefined || !RETIRABLE.has(slot.state) || request.retired === true) continue
     retires.push({
+      id: { slot: slot.slot, pubkey: request.pubkey, owner: request.owner },
       pubkey: request.pubkey,
       slot: slot.slot,
       label: slot.label,
-      owner: npubOf(slot.owner),
+      owner: npubOf(request.owner),
     })
   }
   return {
@@ -383,6 +460,7 @@ export const buildOperatorView = (store: Store): OperatorView => {
     installs,
     retires,
     adopted: retireRequests.filter(isOpenAdopted).map((request) => ({
+      id: { slot: request.slot, pubkey: request.pubkey, owner: request.owner },
       pubkey: request.pubkey,
       name: request.name ?? encodeNpub(request.pubkey),
       owner: encodeNpub(request.owner),
@@ -408,7 +486,7 @@ export interface Operator {
   saveOwners(text: string): Promise<void>
   /** Saves the command template; rejects unknown placeholders. */
   saveTemplate(template: string): Promise<void>
-  confirm(kind: 'installed' | 'retired', pubkey: string): Promise<void>
+  confirm(kind: 'installed' | 'retired', id: RequestId): Promise<void>
   /**
    * Reads the DM with every owner of an active slot and every known owner.
    * No-op unless the viewer is the operator.
@@ -456,6 +534,8 @@ export const createOperator = (deps: OperatorDeps): Operator => {
         .flatMap((s) => (s.owner === undefined ? [] : [s.owner])),
       ...(store.settings().owners ?? []),
     ])
+    // The operator's own requests are listed locally (receiveOwnRequest): no DM with itself.
+    owners.delete(viewer)
     const failures: string[] = []
     for (const owner of owners) {
       try {
@@ -539,9 +619,9 @@ export const createOperator = (deps: OperatorDeps): Operator => {
       notify()
     },
 
-    confirm: async (kind, pubkey) => {
+    confirm: async (kind, id) => {
       const store = await openAsOperator()
-      await confirm(deps.relay, store, kind, pubkey)
+      await confirm(deps.relay, store, kind, id)
       notify()
     },
 

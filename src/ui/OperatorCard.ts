@@ -1,4 +1,4 @@
-import type { Handoff, OfferInput, Operator, OperatorView } from '../buzz/operator'
+import type { Handoff, OfferInput, Operator, OperatorView, RequestId } from '../buzz/operator'
 import type { SettingsCardProps } from '../buzz/types'
 import type { ReactLike } from './OwnerCard'
 
@@ -26,7 +26,7 @@ export interface OperatorPanelProps {
   onSaveOwners(text: string): void
   onDownload(handoff: Handoff): void
   onCopy(text: string, what: string): void
-  onConfirm(kind: 'installed' | 'retired', pubkey: string): void
+  onConfirm(kind: 'installed' | 'retired', id: RequestId): void
   onCheck(): void
 }
 
@@ -178,7 +178,7 @@ export const OperatorPanel = (react: ReactLike, props: OperatorPanelProps): unkn
                   : button('Copy command', () =>
                       props.onCopy(install.handoff.command ?? '', 'Command'),
                     ),
-                button('Installed', () => props.onConfirm('installed', install.pubkey)),
+                button('Installed', () => props.onConfirm('installed', install.id)),
               ),
               install.handoff.command === undefined
                 ? null
@@ -191,12 +191,12 @@ export const OperatorPanel = (react: ReactLike, props: OperatorPanelProps): unkn
         ),
   )
 
-  const retireRow = (key: string, text: string, pubkey: string): unknown =>
+  const retireRow = (id: RequestId, text: string): unknown =>
     h(
       'li',
-      { key, style: ROW_STYLE },
+      { key: `${id.slot}:${id.pubkey}`, style: ROW_STYLE },
       h('span', null, text),
-      button('Retired', () => props.onConfirm('retired', pubkey)),
+      button('Retired', () => props.onConfirm('retired', id)),
     )
   const noRetires = view.retires.length === 0 && view.adopted.length === 0
   const retiresSection = h(
@@ -210,17 +210,12 @@ export const OperatorPanel = (react: ReactLike, props: OperatorPanelProps): unkn
           null,
           ...view.retires.map((retire) =>
             retireRow(
-              retire.pubkey,
+              retire.id,
               `Agent ${retire.pubkey.slice(0, 8)} on ${retire.label} (${retire.slot}) for ${retire.owner}`,
-              retire.pubkey,
             ),
           ),
           ...view.adopted.map((retire) =>
-            retireRow(
-              retire.pubkey,
-              `Existing agent ${retire.name} — owner ${retire.owner}`,
-              retire.pubkey,
-            ),
+            retireRow(retire.id, `Existing agent ${retire.name} — owner ${retire.owner}`),
           ),
         ),
   )
@@ -401,9 +396,9 @@ export const operatorCard = (deps: OperatorCardDeps) =>
           await globalThis.navigator.clipboard.writeText(text)
           return `${what} copied.`
         }),
-      onConfirm: (kind, pubkey) =>
+      onConfirm: (kind, id) =>
         run(async () => {
-          await operator.confirm(kind, pubkey)
+          await operator.confirm(kind, id)
           return kind === 'installed'
             ? 'Told the owner it is installed.'
             : 'Told the owner it is retired.'

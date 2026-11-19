@@ -66,10 +66,12 @@ export interface Store {
   slots(): OperatorSlot[]
   putSlot(slot: OperatorSlot): void
   requests(): InstallRequest[]
+  /** Upserts by slot and agent pubkey. */
   addRequest(request: InstallRequest): void
-  /** Stores the request as the only one for its slot. */
+  /** Stores the request as the only one for its slot; other slots are untouched. */
   putSlotRequest(request: InstallRequest): void
   retireRequests(): OperatorRetireRequest[]
+  /** Upserts by owner and agent pubkey. */
   addRetireRequest(request: OperatorRetireRequest): void
 }
 
@@ -186,13 +188,15 @@ export const createStore = (storage: Storage, scope: { origin: string; viewer: s
     addRequest: (request) =>
       write(
         'requests',
-        upsert(readList<InstallRequest>('requests'), request, (r) => r.pubkey === request.pubkey),
+        upsert(
+          readList<InstallRequest>('requests'),
+          request,
+          (r) => r.slot === request.slot && r.pubkey === request.pubkey,
+        ),
       ),
     putSlotRequest: (request) =>
       write('requests', [
-        ...readList<InstallRequest>('requests').filter(
-          (r) => r.slot !== request.slot && r.pubkey !== request.pubkey,
-        ),
+        ...readList<InstallRequest>('requests').filter((r) => r.slot !== request.slot),
         request,
       ]),
     retireRequests: () => readList<OperatorRetireRequest>('retire-requests'),
@@ -202,7 +206,7 @@ export const createStore = (storage: Storage, scope: { origin: string; viewer: s
         upsert(
           readList<OperatorRetireRequest>('retire-requests'),
           request,
-          (r) => r.pubkey === request.pubkey,
+          (r) => r.owner === request.owner && r.pubkey === request.pubkey,
         ),
       ),
   }

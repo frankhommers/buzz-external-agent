@@ -29,6 +29,7 @@ const view: OperatorView = {
   ],
   installs: [
     {
+      id: { slot: 'vps-1', pubkey: 'a'.repeat(64), owner: 'f'.repeat(64) },
       pubkey: 'a'.repeat(64),
       name: 'Robo',
       slot: 'vps-1',
@@ -42,8 +43,23 @@ const view: OperatorView = {
       },
     },
   ],
-  retires: [{ pubkey: 'b'.repeat(64), slot: 'vps-3', label: 'Three', owner: 'npub1owner' }],
-  adopted: [{ pubkey: 'c'.repeat(64), name: 'Old agent', owner: 'npub1owner' }],
+  retires: [
+    {
+      id: { slot: 'vps-3', pubkey: 'b'.repeat(64), owner: 'f'.repeat(64) },
+      pubkey: 'b'.repeat(64),
+      slot: 'vps-3',
+      label: 'Three',
+      owner: 'npub1owner',
+    },
+  ],
+  adopted: [
+    {
+      id: { slot: 'adopted', pubkey: 'c'.repeat(64), owner: 'f'.repeat(64) },
+      pubkey: 'c'.repeat(64),
+      name: 'Old agent',
+      owner: 'npub1owner',
+    },
+  ],
 }
 
 const noop = (): void => {}
@@ -103,22 +119,37 @@ test('lists known owners and adopted retire requests with a Retired button', () 
   expect(out).toContain('Existing agent Old agent — owner npub1owner')
   const tree = OperatorPanel(
     { ...react, createElement: (type, p, ...children) => ({ type, props: p, children }) },
-    props({ onConfirm: (kind, pubkey) => void retired.push(`${kind} ${pubkey}`) }),
+    props({
+      onConfirm: (kind, id) => void retired.push(`${kind} ${id.slot}:${id.pubkey}:${id.owner}`),
+    }),
   )
   const buttons: { props: { onClick(): void }; children: unknown[] }[] = []
+  const keys: unknown[] = []
   const walk = (node: unknown): void => {
     if (node === null || typeof node !== 'object') return
-    const n = node as { type: unknown; props: { onClick(): void }; children: unknown[] }
+    const n = node as {
+      type: unknown
+      props: { onClick(): void; key?: unknown }
+      children: unknown[]
+    }
     if (n.type === 'button') buttons.push(n)
+    if (n.type === 'li') keys.push(n.props.key)
     for (const child of n.children ?? []) walk(child)
   }
   walk(tree)
   for (const b of buttons.filter((b) => b.children.includes('Retired'))) b.props.onClick()
-  expect(retired).toEqual([`retired ${'b'.repeat(64)}`, `retired ${'c'.repeat(64)}`])
+  const f = 'f'.repeat(64)
+  expect(retired).toEqual([
+    `retired vps-3:${'b'.repeat(64)}:${f}`,
+    `retired adopted:${'c'.repeat(64)}:${f}`,
+  ])
+  expect(keys).toContain(`vps-3:${'b'.repeat(64)}`)
+  expect(keys).toContain(`adopted:${'c'.repeat(64)}`)
 })
 
 test('a template error is shown instead of the command', () => {
   const install: InstallRow = {
+    id: { slot: 'vps-1', pubkey: 'a'.repeat(64), owner: 'f'.repeat(64) },
     pubkey: 'a'.repeat(64),
     name: 'Robo',
     slot: 'vps-1',

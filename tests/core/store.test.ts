@@ -119,7 +119,7 @@ describe('createStore', () => {
     expect(store.requests().map((r) => r.pubkey)).toEqual([hex('9'), hex('a')])
   })
 
-  test('retire requests keep their sender and dedupe by pubkey', () => {
+  test('retire requests keep their sender and dedupe by owner and pubkey', () => {
     const store = createStore(new MemoryStorage(), scope)
     const r = (pubkey: string, owner = hex('8')): OperatorRetireRequest => ({
       v: 1,
@@ -131,7 +131,12 @@ describe('createStore', () => {
     store.addRetireRequest(r(hex('9')))
     store.addRetireRequest(r(hex('9'), hex('7')))
     store.addRetireRequest(r(hex('a')))
-    expect(store.retireRequests()).toEqual([r(hex('9'), hex('7')), r(hex('a'))])
+    store.addRetireRequest({ ...r(hex('9')), retired: true })
+    expect(store.retireRequests()).toEqual([
+      { ...r(hex('9')), retired: true },
+      r(hex('9'), hex('7')),
+      r(hex('a')),
+    ])
   })
 
   test('putSlotRequest keeps only the newest request for a slot', () => {
@@ -145,6 +150,22 @@ describe('createStore', () => {
     ])
     store.putSlotRequest(request(hex('a')))
     expect(store.requests()).toHaveLength(2)
+  })
+
+  test('install requests are keyed by slot and pubkey; a slot request keeps other slots', () => {
+    const store = createStore(new MemoryStorage(), scope)
+    store.addRequest({ ...request(hex('8')), slot: 'two' })
+    store.addRequest(request(hex('8')))
+    store.addRequest(request(hex('8')))
+    expect(store.requests().map((r) => [r.slot, r.pubkey])).toEqual([
+      ['two', hex('8')],
+      ['one', hex('8')],
+    ])
+    store.putSlotRequest(request(hex('9')))
+    expect(store.requests().map((r) => [r.slot, r.pubkey])).toEqual([
+      ['two', hex('8')],
+      ['one', hex('9')],
+    ])
   })
 
   test('known owners are kept as hex in settings; anything else is dropped', () => {

@@ -5,6 +5,7 @@ import type { InstallRequest } from '../core/messages'
 import { type NipOaTag, parseNipOaTag, verifyNipOa } from '../core/nipoa'
 import { parseHostKey, sealSecret } from '../core/seal'
 import type { PendingSetup, Store } from '../core/store'
+import { receiveOwnRequest } from './operator'
 import type { Relay } from './relay'
 import type { AgentType, CreateConfigurationProps, Host, RemoteAgentType } from './types'
 
@@ -144,7 +145,7 @@ export const createProvider = (deps: ProviderDeps): RemoteAgentType => {
 
     activate: async ({ pubkey, signal }) => {
       signal.throwIfAborted()
-      const { store } = await open()
+      const { viewer, store } = await open()
       const pending = store.pending().find((p) => p.pubkey === pubkey)
       const auth = pending === undefined ? undefined : authOf(pending)
       if (pending === undefined || auth === undefined) throw new Error(UNKNOWN_SETUP)
@@ -159,7 +160,13 @@ export const createProvider = (deps: ProviderDeps): RemoteAgentType => {
         sealed: pending.sealed,
       }
       signal.throwIfAborted()
-      await deps.relay.sendBlock(operator, request)
+      // The owner is the operator too: list the request locally, no DM to self.
+      if (operator === viewer)
+        await receiveOwnRequest(store, request, {
+          viewer,
+          readProfile: (key) => deps.relay.readProfile(key),
+        })
+      else await deps.relay.sendBlock(operator, request)
       if (store.statusOf(pubkey) === undefined) store.setStatus(pubkey, 'awaiting-install')
     },
 
