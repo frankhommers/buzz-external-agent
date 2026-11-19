@@ -37,6 +37,8 @@ const BAD_AUTH = 'Buzz did not return a valid owner proof for this agent'
 const UNKNOWN_SETUP = 'Unknown agent setup'
 const PROFILE_HELD = "Change the name or avatar on the server; this agent's key is not held in Buzz"
 const RETIRE_FIRST = 'Retire this agent first, then delete it again'
+const OTHER_COMMUNITY = "Switch to this agent's community in Buzz, then try again"
+const RETIRING = 'This agent is retired or being retired; it cannot be installed again'
 
 const operatorOf = (store: Store): string => {
   const operator = store.settings().operator?.trim()
@@ -73,6 +75,16 @@ export const createProvider = (deps: ProviderDeps): RemoteAgentType => {
   const open = async (): Promise<{ viewer: string; store: Store }> => {
     const { origin, viewer } = await deps.relay.ready()
     return { viewer, store: deps.storeFor({ origin, viewer }) }
+  }
+
+  /** The state of the agent's own community; refuses while another community is selected. */
+  const openFor = async (community: string): Promise<{ viewer: string; store: Store }> => {
+    const ready = await deps.relay.ready()
+    if (ready.community !== community) throw new Error(OTHER_COMMUNITY)
+    return {
+      viewer: ready.viewer,
+      store: deps.storeFor({ origin: ready.origin, viewer: ready.viewer }),
+    }
   }
 
   const authorize = async (
@@ -146,12 +158,14 @@ export const createProvider = (deps: ProviderDeps): RemoteAgentType => {
       }
     },
 
-    activate: async ({ pubkey, signal }) => {
+    activate: async ({ pubkey, community, signal }) => {
       signal.throwIfAborted()
-      const { viewer, store } = await open()
+      const { viewer, store } = await openFor(community)
       const pending = store.pending().find((p) => p.pubkey === pubkey)
       const auth = pending === undefined ? undefined : authOf(pending)
       if (pending === undefined || auth === undefined) throw new Error(UNKNOWN_SETUP)
+      const status = store.statusOf(pubkey)
+      if (status === 'retire-requested' || status === 'retired') throw new Error(RETIRING)
       const operator = operatorOf(store)
       const request: InstallRequest = {
         v: 1,
@@ -163,25 +177,34 @@ export const createProvider = (deps: ProviderDeps): RemoteAgentType => {
         sealed: pending.sealed,
       }
       signal.throwIfAborted()
-      // The owner is the operator too: list the request locally, no DM to self.
-      if (operator === viewer)
+      // The owner is the operator too: list the request locally, no DM to self. A refused local
+      // request was never listed anywhere, so it leaves no status behind.
+      if (operator === viewer) {
         await receiveOwnRequest(store, request, {
           viewer,
           readProfile: (key) => deps.relay.readProfile(key),
         })
-      else await deps.relay.sendBlock(operator, request)
-      if (store.statusOf(pubkey) === undefined) store.setStatus(pubkey, 'awaiting-install')
+        if (status === undefined) store.setStatus(pubkey, 'awaiting-install')
+        return
+      }
+      // Marked before sending: a send that fails or whose delivery is unknown may still have
+      // reached the operator, so Delete must not treat this setup as never sent.
+      if (status === undefined) store.setStatus(pubkey, 'awaiting-install')
+      await deps.relay.sendBlock(operator, request)
     },
 
     profile: async () => {
       throw new Error(PROFILE_HELD)
     },
 
-    remove: async ({ pubkey, signal }) => {
+    remove: async ({ pubkey, community, signal }) => {
       signal.throwIfAborted()
-      const { store } = await open()
-      // No install-request was ever sent, so the agent cannot be running: free its slot.
-      if (store.statusOf(pubkey) === undefined) {
+      const { store } = await openFor(community)
+      // Set up on this device and no install-request ever attempted: the agent cannot be
+      // running, so free its slot. Anything else (adopted, set up elsewhere, sent) must be retired.
+      const unsent =
+        store.statusOf(pubkey) === undefined && store.pending().some((p) => p.pubkey === pubkey)
+      if (unsent) {
         store.deletePending(pubkey)
         return
       }

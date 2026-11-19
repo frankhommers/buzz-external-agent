@@ -46,6 +46,7 @@ interface Options {
   ownerSecret?: Uint8Array
   hostOwnerSecret?: Uint8Array
   publishError?: Error
+  sendError?: Error
   /** The viewer is also the configured operator, with vps-1 offered to self. */
   operatorIsViewer?: boolean
 }
@@ -89,6 +90,7 @@ const setup = (options: Options = {}) => {
       published.push(event)
     },
     sendBlock: async (to, block) => {
+      if (options.sendError) throw options.sendError
       blocks.push({ to, block })
     },
     readBlocks: async (): Promise<BlockMessage[]> => [],
@@ -365,6 +367,38 @@ describe('activate', () => {
     expect(store.statusOf(pubkey)).toBeUndefined()
   })
 
+  test('refuses an agent that is being retired or was retired', async () => {
+    const { provider, store, blocks } = setup()
+    const { pubkey } = await provider.provision(provisionInput())
+    const auth = signNipOaForTests(generateSecretKey(), pubkey)
+    const input = { pubkey, name: 'Helper', community: COMMUNITY, auth, signal: signal() }
+    for (const status of ['retire-requested', 'retired'] as const) {
+      store.setStatus(pubkey, status)
+      await expect(provider.activate(input)).rejects.toThrow(
+        'This agent is retired or being retired; it cannot be installed again',
+      )
+      expect(store.statusOf(pubkey)).toBe(status)
+    }
+    expect(blocks).toHaveLength(0)
+  })
+
+  test("refuses when the agent's community is not the selected one", async () => {
+    const { provider, store, blocks } = setup()
+    const { pubkey } = await provider.provision(provisionInput())
+    const auth = signNipOaForTests(generateSecretKey(), pubkey)
+    await expect(
+      provider.activate({
+        pubkey,
+        name: 'Helper',
+        community: OTHER_COMMUNITY,
+        auth,
+        signal: signal(),
+      }),
+    ).rejects.toThrow("Switch to this agent's community in Buzz, then try again")
+    expect(blocks).toHaveLength(0)
+    expect(store.statusOf(pubkey)).toBeUndefined()
+  })
+
   test('unknown pubkey throws', async () => {
     const { provider, blocks } = setup()
     const auth = signNipOaForTests(generateSecretKey(), 'a'.repeat(64))
@@ -410,6 +444,42 @@ describe('remove', () => {
 
     const again = await provider.provision(provisionInput())
     expect(again.pubkey).not.toBe(pubkey)
+  })
+
+  test('an agent without a setup on this device must be retired first', async () => {
+    const { provider, store } = setup()
+    const adopted = publicKeyHex(generateSecretKey())
+    const input = { pubkey: adopted, community: COMMUNITY, signal: signal() }
+    await expect(provider.remove(input)).rejects.toThrow(
+      'Retire this agent first, then delete it again',
+    )
+    store.markRetired(adopted)
+    await expect(provider.remove(input)).resolves.toBeUndefined()
+  })
+
+  test('a setup whose install-request send failed or is unconfirmed must be retired', async () => {
+    for (const error of ['The message was not sent. Retry.', 'Delivery unknown']) {
+      const { provider, store } = setup({ sendError: new Error(error) })
+      const { pubkey } = await provider.provision(provisionInput())
+      const auth = signNipOaForTests(generateSecretKey(), pubkey)
+      await expect(
+        provider.activate({ pubkey, name: 'Helper', community: COMMUNITY, auth, signal: signal() }),
+      ).rejects.toThrow(error)
+
+      await expect(
+        provider.remove({ pubkey, community: COMMUNITY, signal: signal() }),
+      ).rejects.toThrow('Retire this agent first, then delete it again')
+      expect(store.pendingFor('vps-1')?.pubkey).toBe(pubkey)
+    }
+  })
+
+  test("refuses when the agent's community is not the selected one", async () => {
+    const { provider, store } = setup()
+    const { pubkey } = await provider.provision(provisionInput())
+    await expect(
+      provider.remove({ pubkey, community: OTHER_COMMUNITY, signal: signal() }),
+    ).rejects.toThrow("Switch to this agent's community in Buzz, then try again")
+    expect(store.pendingFor('vps-1')?.pubkey).toBe(pubkey)
   })
 
   test('throws while awaiting install, resolves once retired', async () => {
