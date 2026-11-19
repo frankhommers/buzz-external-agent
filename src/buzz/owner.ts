@@ -129,7 +129,8 @@ export const createOwner = (deps: OwnerDeps): Owner => {
     }
     const { store, viewer, community } = opened
     const operator = operatorHex(store)
-    if (operator === undefined) return
+    // The operator's own blocks are applied locally; Buzz 1.0.5 has no DM with oneself.
+    if (operator === undefined || operator === viewer) return
     const messages = await deps.relay.readBlocks(operator)
     applyOperatorBlocks(store, messages, { operator, viewer, community })
     notify()

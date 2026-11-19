@@ -411,6 +411,8 @@ describe('createOwner when the viewer is the operator', () => {
   test('retiring an own adopted agent lists the request locally without a DM', async () => {
     const fake = selfSetup(profileBy(viewerSecret))
     await fake.owner.retire(ownAgent)
+    await fake.owner.poll()
+    expect(fake.opened).toEqual([])
     expect(fake.sentBlocks).toEqual([])
     expect(fake.store.retireRequests()).toEqual([
       {
@@ -428,6 +430,8 @@ describe('createOwner when the viewer is the operator', () => {
   test('a local retire is refused when the profile names another owner', async () => {
     const fake = selfSetup(profileBy(new Uint8Array(32).fill(13)))
     await expect(fake.owner.retire(ownAgent)).rejects.toThrow('agent is owned by someone else')
+    await fake.owner.poll()
+    expect(fake.opened).toEqual([])
     expect(fake.sentBlocks).toEqual([])
     expect(fake.store.retireRequests()).toEqual([])
     expect(fake.store.statusOf(ownAgent)).toBeUndefined()
@@ -453,6 +457,8 @@ describe('createOwner when the viewer is the operator', () => {
       sealed: '-----BEGIN AGE ENCRYPTED FILE-----',
     })
     await fake.owner.retire(ownAgent)
+    await fake.owner.poll()
+    expect(fake.opened).toEqual([])
     expect(fake.sentBlocks).toEqual([])
     expect(fake.store.retireRequests()).toEqual([
       { v: 1, type: 'retire-request', slot: 'vps-2', pubkey: ownAgent, owner: self },
