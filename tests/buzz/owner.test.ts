@@ -220,6 +220,18 @@ const setup = (options: Fake = {}) => {
 }
 
 describe('createOwner', () => {
+  test.each([
+    [undefined, 'Unknown — set up outside this device', true],
+    ['awaiting-install', 'Waiting for installation', true],
+    ['installed', 'Installed', true],
+    ['retire-requested', 'Retirement requested — waiting for the operator', false],
+    ['retired', 'Stopped by the operator — you can delete it now', false],
+  ] as const)('agentStatus of %p reads %p', async (status, text, canRetire) => {
+    const fake = setup()
+    if (status !== undefined) fake.store.setStatus(agentA, status)
+    expect(await fake.owner.agentStatus(agentA)).toEqual({ text, canRetire })
+  })
+
   test('poll reads only the DM with the operator and applies its blocks', async () => {
     const fake = setup({ messages: [from(operator, offer('vps-1'))] })
     fake.store.setSettings({ operator: encodeNpub(operator) })

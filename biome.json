@@ -7,9 +7,12 @@
   },
   "linter": {
     "enabled": true,
-    "rules": {
-      "preset": "recommended",
-      "correctness": { "noComponentHookFactories": "off" }
+    "rules": { "preset": "recommended" }
+  },
+  "overrides": [
+    {
+      "includes": ["src/ui/**"],
+      "linter": { "rules": { "correctness": { "noComponentHookFactories": "off" } } }
     }
-  }
+  ]
 }
