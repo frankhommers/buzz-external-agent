@@ -4,7 +4,7 @@ import type { VisibleEvent } from '../../src/buzz/types'
 import { buildAgentProfile } from '../../src/core/events'
 import { generateSecretKey, publicKeyHex } from '../../src/core/keys'
 import { type Block, encodeBlock } from '../../src/core/messages'
-import { event, fakeCtx } from '../helpers/fake-session'
+import { agentSummary, event, fakeCtx } from '../helpers/fake-session'
 import { signNipOaForTests } from '../helpers/nipoa'
 
 const hex = (c: string): string => c.repeat(64)
@@ -68,6 +68,47 @@ describe('readOwnRecords', () => {
     const { ctx } = fakeCtx({ events: [stranger] })
     const result = await createRelay(ctx).readOwnRecords()
     expect(result.ok && result.records.size).toBe(0)
+  })
+
+  test('reads fresh, in the foreground, as Buzz reads its own listings', async () => {
+    const fake = fakeCtx()
+    await createRelay(fake.ctx).readOwnRecords()
+    expect(fake.readSettings).toEqual([{ fresh: true, priority: 'foreground' }])
+  })
+
+  test('skips heads whose local delivery failed or is unknown', async () => {
+    const { ctx } = fakeCtx({
+      events: [
+        record('1', agentA, 10, { name: 'accepted' }),
+        { ...record('2', agentA, 20, { name: 'failed' }), delivery: 'failed' },
+        { ...record('3', agentA, 30, { name: 'unknown' }), delivery: 'unknown' },
+        { ...record('4', agentB, 40, { name: 'sending' }), delivery: 'sending' },
+      ],
+    })
+    const result = await createRelay(ctx).readOwnRecords()
+    if (!result.ok) throw new Error('expected ok')
+    expect(result.records.get(agentA)?.content).toEqual({ name: 'accepted' })
+    expect(result.records.get(agentB)?.content).toEqual({ name: 'sending' })
+  })
+
+  test('keeps a head whose content is not a JSON object as {} with its tags', async () => {
+    const { ctx } = fakeCtx({
+      events: [
+        record('1', agentA, 10, { name: 'older' }),
+        { ...record('2', agentA, 20), content: 'not json' },
+        { ...record('3', agentB, 20), content: '[1,2]' },
+      ],
+    })
+    const result = await createRelay(ctx).readOwnRecords()
+    if (!result.ok) throw new Error('expected ok')
+    expect(result.records.get(agentA)).toEqual({
+      content: {},
+      tags: [
+        ['d', agentA],
+        ['runtime', 'r'],
+      ],
+    })
+    expect(result.records.get(agentB)?.content).toEqual({})
   })
 
   test('a rejected read is { ok: false }', async () => {
@@ -207,14 +248,25 @@ describe('readBlocks', () => {
 describe('isLocalIdentity', () => {
   test('true only for an agent placed here', () => {
     const { ctx } = fakeCtx({
-      agents: [
-        { pubkey: agentA, place: 'here' },
-        { pubkey: agentB, place: 'hosted' },
-      ],
+      agents: [agentSummary(agentA, 'here'), agentSummary(agentB, 'hosted')],
     })
     const relay = createRelay(ctx)
     expect(relay.isLocalIdentity(agentA)).toBe(true)
     expect(relay.isLocalIdentity(agentB)).toBe(false)
     expect(relay.isLocalIdentity(peer)).toBe(false)
+  })
+
+  test('also finds a local agent running in another community', () => {
+    const { ctx } = fakeCtx({ running: [agentSummary(agentB, 'here')] })
+    expect(createRelay(ctx).isLocalIdentity(agentB)).toBe(true)
+  })
+
+  test('fails closed while Buzz is still loading its agents', () => {
+    for (const agentsStatus of ['loading', 'unavailable', 'error'] as const) {
+      const { ctx } = fakeCtx({ agentsStatus })
+      expect(() => createRelay(ctx).isLocalIdentity(agentA)).toThrow(
+        'Buzz is still loading agents, try again',
+      )
+    }
   })
 })

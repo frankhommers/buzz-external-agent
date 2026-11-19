@@ -1,10 +1,13 @@
 import type {
+  AgentSummary,
+  AgentsSnapshot,
   Delivery,
   DirectMessages,
   Messages,
   Outbox,
   OutgoingEvent,
   ReadFilter,
+  ReadSettings,
   RelayCtx,
   RelaySession,
   RelaySnapshot,
@@ -20,8 +23,16 @@ export interface FakeOptions {
   events?: VisibleEvent[]
   readError?: Error
   dmAvailable?: boolean
-  agents?: { pubkey: string; place: 'here' | 'hosted' | 'elsewhere' }[]
+  agents?: AgentSummary[]
+  running?: AgentSummary[]
+  agentsStatus?: AgentsSnapshot['status']
 }
+
+export const agentSummary = (
+  pubkey: string,
+  place: AgentSummary['place'],
+  overrides: Partial<AgentSummary> = {},
+): AgentSummary => ({ pubkey, place, name: 'Agent', type: 'other/type', ...overrides })
 
 export const fakeCtx = (options: FakeOptions = {}) => {
   const viewer = options.viewer ?? 'v'.repeat(64)
@@ -32,6 +43,7 @@ export const fakeCtx = (options: FakeOptions = {}) => {
   const dismissed: string[] = []
   const opened: string[][] = []
   const reads: ReadFilter[][] = []
+  const readSettings: (ReadSettings | undefined)[] = []
   let counter = 0
 
   const outbox: Outbox = {
@@ -83,8 +95,9 @@ export const fakeCtx = (options: FakeOptions = {}) => {
     outbox,
     directMessages,
     messages,
-    read: async (filters) => {
+    read: async (filters, settings) => {
       reads.push([...filters])
+      readSettings.push(settings)
       if (options.readError) throw options.readError
       return (options.events ?? []).filter((e) =>
         filters.some(
@@ -105,9 +118,15 @@ export const fakeCtx = (options: FakeOptions = {}) => {
   }
   const ctx: RelayCtx = {
     relay: { snapshot: () => snapshot, subscribe: () => () => {} },
-    agents: { snapshot: () => ({ agents: options.agents ?? [] }) },
+    agents: {
+      snapshot: () => ({
+        status: options.agentsStatus ?? 'ready',
+        agents: options.agents ?? [],
+        running: options.running ?? [],
+      }),
+    },
   }
-  return { ctx, viewer, sent, messagesSent, dismissed, opened, reads }
+  return { ctx, viewer, sent, messagesSent, dismissed, opened, reads, readSettings }
 }
 
 export const event = (

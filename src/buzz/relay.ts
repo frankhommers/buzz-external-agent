@@ -10,6 +10,7 @@ const RECORD_LIMIT = 500
 const PROFILE_LIMIT = 20
 const DM_LIMIT = 200
 const DM_OPEN_TIMEOUT_MS = 30_000
+const AGENTS_LOADING = 'Buzz is still loading agents, try again'
 
 export interface ReadyRelay {
   origin: string
@@ -34,6 +35,7 @@ export interface Relay {
   publishSigned(event: SignedEvent): Promise<void>
   sendBlock(to: string, block: Block): Promise<void>
   readBlocks(withPubkey: string): Promise<BlockMessage[]>
+  /** Whether the key is an agent identity of this Buzz. Throws until Buzz has loaded its agents. */
   isLocalIdentity(pubkey: string): boolean
 }
 
@@ -61,16 +63,21 @@ const toSigned = (event: VisibleEvent): SignedEvent | undefined =>
         sig: event.sig,
       }
 
-const parseContent = (content: string): Record<string, unknown> | undefined => {
+// As Buzz reads a listing (agents/service.ts:2008-2015): anything but a JSON object is {}.
+const parseContent = (content: string): Record<string, unknown> => {
   try {
     const parsed: unknown = JSON.parse(content)
     return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
       ? (parsed as Record<string, unknown>)
-      : undefined
+      : {}
   } catch {
-    return undefined
+    return {}
   }
 }
+
+/** A local outbox intent the relay refused or may never have stored is not the record. */
+const isUndelivered = (event: VisibleEvent): boolean =>
+  event.delivery === 'failed' || event.delivery === 'unknown'
 
 /** Settles when the outbox reports relay acceptance of `id`; rejects with its refusal. */
 const delivered = (outbox: Outbox, id: string, failure: string): Promise<void> =>
@@ -119,22 +126,24 @@ export const createRelay = (ctx: RelayCtx): Relay => {
     readOwnRecords: async () => {
       try {
         const { session, viewer } = live()
-        const events = await session.read([
-          { kinds: [AGENT_RECORD_KIND], authors: [viewer], limit: RECORD_LIMIT },
-        ])
+        // Buzz reads its own listings the same way (agents/service.ts:6402-6404).
+        const events = await session.read(
+          [{ kinds: [AGENT_RECORD_KIND], authors: [viewer], limit: RECORD_LIMIT }],
+          { fresh: true, priority: 'foreground' },
+        )
         const newest = new Map<string, VisibleEvent>()
         for (const event of events) {
           const d = tagValue(event, 'd')
           if (event.kind !== AGENT_RECORD_KIND || event.pubkey !== viewer) continue
-          if (d === undefined || !isHex64(d)) continue
+          if (d === undefined || !isHex64(d) || isUndelivered(event)) continue
           if (isNewer(event, newest.get(d))) newest.set(d, event)
         }
         const records = new Map<string, AgentRecord>()
-        for (const [d, event] of newest) {
-          const content = parseContent(event.content)
-          if (content !== undefined)
-            records.set(d, { content, tags: event.tags.map((tag) => [...tag]) })
-        }
+        for (const [d, event] of newest)
+          records.set(d, {
+            content: parseContent(event.content),
+            tags: event.tags.map((tag) => [...tag]),
+          })
         return { ok: true, records }
       } catch (error) {
         return { ok: false, error: error instanceof Error ? error.message : String(error) }
@@ -204,9 +213,13 @@ export const createRelay = (ctx: RelayCtx): Relay => {
         )
     },
 
-    isLocalIdentity: (pubkey) =>
-      ctx.agents
-        .snapshot()
-        .agents.some((agent) => agent.pubkey === pubkey && agent.place === 'here'),
+    // Fails closed: until Buzz has loaded its agents, a local key could look foreign.
+    isLocalIdentity: (pubkey) => {
+      const snapshot = ctx.agents.snapshot()
+      if (snapshot.status !== 'ready') throw new Error(AGENTS_LOADING)
+      return [...snapshot.agents, ...snapshot.running].some(
+        (agent) => agent.pubkey === pubkey && agent.place === 'here',
+      )
+    },
   }
 }

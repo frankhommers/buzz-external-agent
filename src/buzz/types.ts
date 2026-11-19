@@ -23,10 +23,20 @@ export interface VisibleEvent {
   content: string
   tags: readonly (readonly string[])[]
   sig?: string
+  /** Set on the viewer's own outbox events merged in by `read` (projection.ts:51-61). */
+  delivery?: Delivery
 }
 
 /** features/relay/outbox.ts:21 */
 export type Delivery = 'sending' | 'accepted' | 'unknown' | 'failed' | 'seen'
+
+/** features/relay/reader.ts:12-17 (ReadOptions, reduced). */
+export interface ReadSettings {
+  signal?: AbortSignal
+  priority?: 'foreground' | 'background'
+  /** Start a new read instead of joining an older in-flight one. */
+  fresh?: boolean
+}
 
 /** features/relay/outbox.ts:48-53 (OutgoingEvent, reduced). */
 export interface OutgoingEvent {
@@ -59,10 +69,7 @@ export interface Messages {
 /** features/relay/session.ts:2484 (session object), :3029 (`read`), :2997 (`outbox`). */
 export interface RelaySession {
   viewer?: string | undefined
-  read(
-    filters: readonly ReadFilter[],
-    settings?: { signal?: AbortSignal },
-  ): Promise<readonly VisibleEvent[]>
+  read(filters: readonly ReadFilter[], settings?: ReadSettings): Promise<readonly VisibleEvent[]>
   outbox?: Outbox | undefined
   directMessages: DirectMessages
   messages: Messages
@@ -83,15 +90,44 @@ export interface RelayData {
   subscribe(listener: () => void): () => void
 }
 
-/** features/agents/service.ts:250-263 (Agent) and :1318-1323 (AgentsSnapshot), reduced. */
-export interface AgentsSnapshot {
-  agents: readonly { pubkey: string; place: 'here' | 'hosted' | 'elsewhere' }[]
+/** features/agents/service.ts:250-262 (Agent), reduced to what the snapshot readers use. */
+export interface AgentSummary {
+  pubkey: string
+  name: string
+  /** The agent type's key, `pluginId/typeId` (our runtime tag for ours). */
+  type: string
+  place: 'here' | 'hosted' | 'elsewhere'
 }
 
-/** features/agents/service.ts:1412,1514 (Agents.snapshot) and :3042 (Agents.register). */
+/** features/agents/service.ts:1318-1330 (AgentsSnapshot), reduced. */
+export interface AgentsSnapshot {
+  status: 'unavailable' | 'loading' | 'ready' | 'error'
+  /** The selected community's agents. */
+  agents: readonly AgentSummary[]
+  /** Every agent kept running here, whichever community is selected. */
+  running: readonly AgentSummary[]
+}
+
+/** features/agents/service.ts:1514-1515 (snapshot, subscribe) and :3042 (register). */
 export interface AgentsService {
   snapshot(): AgentsSnapshot
+  subscribe(listener: () => void): () => void
   register<Config>(type: AgentType<Config>): void
+}
+
+/** features/settings/service.ts:10-20 (SettingsCard component props, reduced). */
+export interface SettingsCardProps {
+  active(): boolean
+  community?: { id: string; name: string }
+}
+
+/** features/settings/service.ts:10-40 (SettingsCard, SettingsCards.register), reduced. */
+export interface SettingsCards {
+  register(card: {
+    id: string
+    title: string
+    component: (props: SettingsCardProps) => unknown
+  }): void
 }
 
 /** features/host/service.ts:92-97 (NipOaAuthorization). */
