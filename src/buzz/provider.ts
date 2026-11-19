@@ -89,9 +89,15 @@ export const createProvider = (deps: ProviderDeps): RemoteAgentType => {
     return { viewer, store: deps.storeFor({ origin, viewer }) }
   }
 
-  /** The state of the agent's own community; refuses while another community is selected. */
-  const openFor = async (community: string): Promise<{ viewer: string; store: Store }> => {
-    const ready = await deps.relay.ready()
+  /**
+   * The state of the agent's own community; refuses while another community is selected.
+   * Waits briefly while Buzz reconnects, so a Delete or activation right then is not refused.
+   */
+  const openFor = async (
+    community: string,
+    signal: AbortSignal,
+  ): Promise<{ viewer: string; store: Store }> => {
+    const ready = await deps.relay.whenReady(signal)
     if (ready.community !== community) throw new Error(OTHER_COMMUNITY)
     return {
       viewer: ready.viewer,
@@ -204,7 +210,7 @@ export const createProvider = (deps: ProviderDeps): RemoteAgentType => {
 
     activate: async ({ pubkey, community, signal }) => {
       signal.throwIfAborted()
-      const { viewer, store } = await openFor(community)
+      const { viewer, store } = await openFor(community, signal)
       const pending = store.pending().find((p) => p.pubkey === pubkey)
       const auth = pending === undefined ? undefined : authOf(pending)
       if (pending === undefined || auth === undefined) throw new Error(UNKNOWN_SETUP)
@@ -243,7 +249,7 @@ export const createProvider = (deps: ProviderDeps): RemoteAgentType => {
 
     remove: async ({ pubkey, community, signal }) => {
       signal.throwIfAborted()
-      const { store } = await openFor(community)
+      const { store } = await openFor(community, signal)
       // Set up on this device and no install-request ever attempted: the agent cannot be
       // running, so free its slot. Anything else (adopted, set up elsewhere, sent) must be retired.
       const unsent =

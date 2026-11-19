@@ -142,6 +142,7 @@ const fakeRelay = (options: FakeOptions = {}) => {
       viewer: options.viewer ?? operator,
       community: COMMUNITY,
     }),
+    whenReady: async () => relay.ready(),
     readOwnRecords: async () => ({ ok: true, records: new Map() }),
     readProfile: async (pubkey) => (options.profiles ?? profilesOwnedBy(ownerSecret))[pubkey],
     publishRecord: async () => {},

@@ -11,6 +11,9 @@ const PROFILE_LIMIT = 20
 const DM_LIMIT = 200
 const DM_OPEN_TIMEOUT_MS = 30_000
 const AGENTS_LOADING = 'Buzz is still loading agents, try again'
+const NOT_CONNECTED = 'Not connected to a community yet'
+/** How long an agent action waits for Buzz to finish reconnecting. */
+export const READY_WAIT_MS = 5_000
 
 export interface ReadyRelay {
   origin: string
@@ -29,6 +32,8 @@ export interface BlockMessage {
 
 export interface Relay {
   ready(): Promise<ReadyRelay>
+  /** As ready(), but waits up to `timeoutMs` for a session that is reconnecting. */
+  whenReady(signal: AbortSignal, timeoutMs?: number): Promise<ReadyRelay>
   readOwnRecords(): Promise<OwnRecords>
   readProfile(pubkey: string): Promise<SignedEvent | undefined>
   publishRecord(record: AgentRecord): Promise<void>
@@ -106,8 +111,22 @@ export const createRelay = (ctx: RelayCtx): Relay => {
       snapshot.origin === undefined ||
       snapshot.viewer === undefined
     )
-      throw new Error('Not connected to a community yet')
+      throw new Error(NOT_CONNECTED)
     return { session: snapshot.session, origin: snapshot.origin, viewer: snapshot.viewer }
+  }
+
+  const readyNow = (): ReadyRelay => {
+    const { origin, viewer } = live()
+    return { origin, viewer, community: wssOf(origin) }
+  }
+
+  const isReady = (): boolean => {
+    try {
+      live()
+      return true
+    } catch {
+      return false
+    }
   }
 
   const openDirectMessage = async (session: RelaySession, pubkey: string): Promise<string> => {
@@ -117,10 +136,43 @@ export const createRelay = (ctx: RelayCtx): Relay => {
   }
 
   return {
-    ready: async () => {
-      const { origin, viewer } = live()
-      return { origin, viewer, community: wssOf(origin) }
-    },
+    ready: async () => readyNow(),
+
+    whenReady: (signal, timeoutMs = READY_WAIT_MS) =>
+      new Promise<ReadyRelay>((resolve, reject) => {
+        if (signal.aborted) {
+          reject(signal.reason)
+          return
+        }
+        if (isReady()) {
+          resolve(readyNow())
+          return
+        }
+        let settled = false
+        let unsubscribe = (): void => {}
+        const onAbort = (): void => {
+          finish()
+          reject(signal.reason)
+        }
+        const timer = setTimeout(() => {
+          finish()
+          reject(new Error(NOT_CONNECTED))
+        }, timeoutMs)
+        // Every exit clears the timer, the abort listener and the relay subscription.
+        const finish = (): void => {
+          settled = true
+          unsubscribe()
+          clearTimeout(timer)
+          signal.removeEventListener('abort', onAbort)
+        }
+        signal.addEventListener('abort', onAbort, { once: true })
+        unsubscribe = ctx.relay.subscribe(() => {
+          if (settled || !isReady()) return
+          finish()
+          resolve(readyNow())
+        })
+        if (settled) unsubscribe()
+      }),
 
     readOwnRecords: async () => {
       try {

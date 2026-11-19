@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { createRelay } from '../../src/buzz/relay'
+import { createRelay, READY_WAIT_MS } from '../../src/buzz/relay'
 import type { VisibleEvent } from '../../src/buzz/types'
 import { buildAgentProfile } from '../../src/core/events'
 import { generateSecretKey, publicKeyHex } from '../../src/core/keys'
@@ -38,6 +38,60 @@ describe('ready', () => {
   test('throws when not ready', async () => {
     const { ctx } = fakeCtx({ status: 'connecting' })
     await expect(createRelay(ctx).ready()).rejects.toThrow()
+  })
+})
+
+describe('whenReady', () => {
+  const READY = {
+    origin: 'https://relay.example.com',
+    community: 'wss://relay.example.com',
+  }
+  const signal = (): AbortSignal => new AbortController().signal
+
+  test('resolves at once when the session is ready', async () => {
+    const fake = fakeCtx()
+    expect(await createRelay(fake.ctx).whenReady(signal())).toEqual({
+      ...READY,
+      viewer: fake.viewer,
+    })
+    expect(fake.relayListeners.size).toBe(0)
+  })
+
+  test('resolves once a reconnecting session becomes ready within the window', async () => {
+    const fake = fakeCtx({ status: 'connecting' })
+    const ready = createRelay(fake.ctx).whenReady(signal(), 1_000)
+    fake.setRelay({ status: 'ready', cached: true })
+    await Promise.resolve()
+    fake.setRelay({ status: 'ready', cached: undefined })
+    expect(await ready).toEqual({ ...READY, viewer: fake.viewer })
+    expect(fake.relayListeners.size).toBe(0)
+  })
+
+  test('throws once the window passes without a ready session', async () => {
+    const fake = fakeCtx({ status: 'connecting' })
+    const started = Date.now()
+    await expect(createRelay(fake.ctx).whenReady(signal(), 30)).rejects.toThrow(
+      'Not connected to a community yet',
+    )
+    expect(Date.now() - started).toBeGreaterThanOrEqual(25)
+    expect(fake.relayListeners.size).toBe(0)
+  })
+
+  test('rejects promptly when aborted, and at once when already aborted', async () => {
+    const fake = fakeCtx({ status: 'connecting' })
+    const controller = new AbortController()
+    const waiting = createRelay(fake.ctx).whenReady(controller.signal, 10_000)
+    controller.abort()
+    await expect(waiting).rejects.toMatchObject({ name: 'AbortError' })
+    expect(fake.relayListeners.size).toBe(0)
+    await expect(createRelay(fake.ctx).whenReady(controller.signal, 10_000)).rejects.toMatchObject({
+      name: 'AbortError',
+    })
+    expect(fake.relayListeners.size).toBe(0)
+  })
+
+  test('waits five seconds by default', () => {
+    expect(READY_WAIT_MS).toBe(5_000)
   })
 })
 

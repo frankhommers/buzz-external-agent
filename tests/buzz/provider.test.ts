@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { ed25519 } from '@noble/curves/ed25519.js'
 import { agentType, createProvider, type ProviderDeps } from '../../src/buzz/provider'
-import type { BlockMessage, Relay } from '../../src/buzz/relay'
+import { type BlockMessage, createRelay, type Relay } from '../../src/buzz/relay'
 import { TYPE_ID } from '../../src/constants'
 import { profileOwner, type SignedEvent, verifyEvent } from '../../src/core/events'
 import { encodeNpub, generateSecretKey, publicKeyHex } from '../../src/core/keys'
@@ -9,6 +9,7 @@ import type { Block, SlotOffer } from '../../src/core/messages'
 import type { NipOaTag } from '../../src/core/nipoa'
 import { parseHostKey } from '../../src/core/seal'
 import { createStore } from '../../src/core/store'
+import { fakeCtx } from '../helpers/fake-session'
 import { MemoryStorage } from '../helpers/memory-storage'
 import { signNipOaForTests } from '../helpers/nipoa'
 
@@ -92,8 +93,14 @@ const setup = (options: Options = {}) => {
   }[] = []
   const blocks: { to: string; block: Block }[] = []
   const authCalls: string[] = []
+  /** The signal of each wait for a ready session. */
+  const readyWaits: AbortSignal[] = []
   const relay: Relay = {
     ready: async () => ({ origin: ORIGIN, viewer, community: COMMUNITY }),
+    whenReady: async (given) => {
+      readyWaits.push(given)
+      return relay.ready()
+    },
     readOwnRecords: async () => ({ ok: true, records: new Map() }),
     readProfile: async (pubkey) => {
       if (options.readError) throw options.readError
@@ -144,6 +151,7 @@ const setup = (options: Options = {}) => {
     agentPublishes,
     blocks,
     authCalls,
+    readyWaits,
   }
 }
 
@@ -669,6 +677,50 @@ describe('remove', () => {
     )
     store.markRetired(pubkey)
     await expect(provider.remove(input)).resolves.toBeUndefined()
+  })
+})
+
+describe('a session that is reconnecting', () => {
+  test('activate and remove wait for a ready session with their signal', async () => {
+    const { provider, readyWaits } = setup()
+    const { pubkey } = await provider.provision(provisionInput())
+    const auth = signNipOaForTests(generateSecretKey(), pubkey)
+    const activateSignal = signal()
+    await provider.activate({
+      pubkey,
+      name: 'Helper',
+      community: COMMUNITY,
+      auth,
+      signal: activateSignal,
+    })
+    const removeSignal = signal()
+    await expect(
+      provider.remove({ pubkey, community: COMMUNITY, signal: removeSignal }),
+    ).rejects.toThrow('Retire this agent first, then delete it again')
+    expect(readyWaits).toEqual([activateSignal, removeSignal])
+  })
+
+  test('remove resolves once Buzz has reconnected', async () => {
+    const fake = fakeCtx({ status: 'connecting', origin: ORIGIN })
+    const storage = new MemoryStorage()
+    const retired = publicKeyHex(generateSecretKey())
+    createStore(storage, { origin: ORIGIN, viewer: fake.viewer }).markRetired(retired)
+    const provider = createProvider({
+      relay: createRelay(fake.ctx),
+      storeFor: (scope) => createStore(storage, scope),
+      host: {
+        prepareRemoteAgentAuthorization: async () => {
+          throw new Error('unused')
+        },
+      },
+      now: () => NOW_MS,
+      publishAsAgent: async () => {},
+    })
+
+    const removing = provider.remove({ pubkey: retired, community: COMMUNITY, signal: signal() })
+    fake.setRelay({ status: 'ready' })
+    await expect(removing).resolves.toBeUndefined()
+    expect(fake.relayListeners.size).toBe(0)
   })
 })
 

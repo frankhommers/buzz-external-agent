@@ -110,14 +110,26 @@ export const fakeCtx = (options: FakeOptions = {}) => {
       )
     },
   }
-  const snapshot: RelaySnapshot = {
+  let snapshot: RelaySnapshot = {
     status: options.status ?? 'ready',
     origin: options.origin ?? 'https://relay.example.com',
     viewer,
     session,
   }
+  const relayListeners = new Set<() => void>()
+  /** Replaces the relay snapshot, as Buzz does on (re)connect, and notifies subscribers. */
+  const setRelay = (change: Partial<Omit<RelaySnapshot, 'session'>>): void => {
+    snapshot = { ...snapshot, ...change }
+    for (const listener of [...relayListeners]) listener()
+  }
   const ctx: RelayCtx = {
-    relay: { snapshot: () => snapshot, subscribe: () => () => {} },
+    relay: {
+      snapshot: () => snapshot,
+      subscribe: (listener) => {
+        relayListeners.add(listener)
+        return () => void relayListeners.delete(listener)
+      },
+    },
     agents: {
       snapshot: () => ({
         status: options.agentsStatus ?? 'ready',
@@ -126,7 +138,18 @@ export const fakeCtx = (options: FakeOptions = {}) => {
       }),
     },
   }
-  return { ctx, viewer, sent, messagesSent, dismissed, opened, reads, readSettings }
+  return {
+    ctx,
+    viewer,
+    sent,
+    messagesSent,
+    dismissed,
+    opened,
+    reads,
+    readSettings,
+    setRelay,
+    relayListeners,
+  }
 }
 
 export const event = (

@@ -223,6 +223,7 @@ const setup = (options: Fake = {}) => {
       if (options.relayReady === false) throw new Error('Not connected to a community yet')
       return { origin: ORIGIN, viewer, community: COMMUNITY }
     },
+    whenReady: async () => relay.ready(),
     readOwnRecords: async () => ({ ok: true, records: new Map() }),
     readProfile: async () => undefined,
     publishRecord: async () => {},
