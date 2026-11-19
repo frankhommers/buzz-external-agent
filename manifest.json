@@ -1,0 +1,10 @@
+{
+  "id": "io.github.frankhommers.selfhosted-agents",
+  "name": "Self-hosted agents",
+  "apiVersion": 1,
+  "description": "Run Buzz agents on your own machines: create an agent, seal its key to the host, and manage it from Buzz.",
+  "discovery": {
+    "category": "agents",
+    "tags": ["self-hosted", "agents"]
+  }
+}

@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.9.0-beta.2
+
+Pre-release. The full flow was verified live on Buzz Desktop 1.0.5 (Linux) against a test
+relay: offer, create, install with the reference installer, Installed, Retire, Retired,
+Delete; bring an existing agent into Buzz, retire and delete it; Delete before Retire is
+refused.
+
+- Creating new agents works: the agent profile is published signed by the agent over the
+  plugin's own connection, signed in as the agent (NIP-42).
+- The operator settings card is listed only for the community's operator, titled
+  "Self-hosted agents — operator".
+- Cards, the create picker and the Server tab are styled with Buzz design tokens: labelled,
+  bordered inputs, host-style buttons, a readable servers table and red error lines.
+- Delivered DMs are dismissed from the Buzz outbox, which caps pending entries.
+- A failure to sign the agent sign-in now fails cleanly; relay text in errors is capped at
+  200 characters without control characters.
+- `scripts/legacy-record.ts`: test-only tool that publishes an old-Buzz-style agent record.
+- Creating an agent while an earlier create for the same server is still publishing joins
+  that create (same name) or is refused (other name), so it can no longer leave Buzz with an
+  agent that cannot be activated or deleted. A create whose setup changed meanwhile fails.
+- A retried create reads the agent profile fresh from the relay, so a stale read cannot
+  discard a published key.
+- A sent agent whose profile was never published now asks to retire it, not remove it.
+- Activate and Delete wait up to 5 seconds for Buzz to finish reconnecting instead of
+  failing at once.
+- Known limitations: hosted agents always look online; Retire before Delete; if Delete is
+  refused right after Retired while Buzz is reconnecting, try Delete again; Cancel retire
+  request only cancels locally; updating the plugin on Buzz 1.0.5 means delete and add again.
+
+## 0.9.0-beta.1
+
+Pre-release. A TypeScript plugin for Buzz Desktop 1.0.5 replaces the Go placeholder, which
+only worked with old Buzz (last Go release: tag `v0.1.1`, see the GitHub releases page).
+
+- Self-hosted agent type with owner and operator roles, Buzz DM protocol, age-sealed keys.
+- Bring existing agents into Buzz, retire (also adopted agents) and delete.
+- Operator view with Known owners and a shell-quoting command template.
+- Generic reference installer, shellchecked and tested under `dash`.
+- Release workflow: `selfhosted-agents-<version>.zip` and `SHA256SUMS`.
+- Known limitation: publishing a new agent's profile is a stub, so creating new agents does
+  not work end to end yet; adopting, retiring and deleting are not yet verified live (fixed
+  in 0.9.0-beta.2).
+
 ## 0.1.1
 
 - Allow configuration when the OS confirms that a saved local PID has exited,

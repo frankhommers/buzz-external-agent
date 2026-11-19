@@ -1,9 +1,9 @@
-name: Test and release
+name: CI
 
 on:
   push:
     branches: [main]
-    tags: ['v*']
+    tags: ["v*"]
   pull_request:
 
 permissions:
@@ -14,16 +14,28 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: '1.27.x'
-          cache: false
-      - run: go vet ./...
-      - run: go test -race -timeout 120s ./...
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - name: Install age (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y age dash
+      - name: Install age (macOS)
+        if: runner.os == 'macOS'
+        run: brew install age
+      - run: bun install --frozen-lockfile
+      - run: bunx biome check .
+      - run: bunx tsc --noEmit
+      - name: Shellcheck the installer
+        if: runner.os == 'Linux'
+        run: shellcheck installer/install-agent-key.sh
+      - run: bun test
+      - name: Installer tests under dash
+        if: runner.os == 'Linux'
+        run: INSTALLER_SHELL=dash bun test tests/installer.test.ts
+      - run: bun run build
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -33,17 +45,31 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.27.x'
-          cache: false
-      - name: Verify version matches tag
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - name: Package
+        id: package
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: test "$(go run . --version)" = "buzz-external-agent ${RELEASE_TAG#v}"
-      - run: go run ./tools/release
-      - name: Publish binaries
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=$(jq -r .version package.json)
+          if [ "$TAG" != "v$version" ]; then
+            echo "Tag $TAG does not match package.json version $version" >&2
+            exit 1
+          fi
+          mkdir -p release
+          (cd dist/plugin && zip -r "../../release/selfhosted-agents-$version.zip" .)
+          (cd release && sha256sum "selfhosted-agents-$version.zip" > SHA256SUMS)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: gh release create "$RELEASE_TAG" dist/*.zip dist/SHA256SUMS --verify-tag --title "$RELEASE_TAG" --notes-file CHANGELOG.md
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ steps.package.outputs.version }}
+        run: |
+          flags=""
+          case "$VERSION" in *-*) flags="--prerelease" ;; esac
+          gh release create "$TAG" release/* --title "$TAG" --notes-file CHANGELOG.md $flags
