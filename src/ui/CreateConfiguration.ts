@@ -2,13 +2,11 @@ import type { OfferRow, Owner } from '../buzz/owner'
 import type { SelfHostedConfig } from '../buzz/provider'
 import type { CreateConfigurationProps } from '../buzz/types'
 import type { ReactLike } from './OwnerCard'
+import { ERROR, HINT, ROW, SECTION, TEXT } from './styles'
 
 export const NO_OFFERS_TEXT = 'No server is ready for you yet. Ask your operator.'
 const LOADING_TEXT = 'Looking for your servers…'
 const ERROR_TEXT = 'Could not read your servers: '
-
-const LIST_STYLE = { display: 'flex', flexDirection: 'column', gap: '0.5rem' }
-const ROW_STYLE = { display: 'flex', gap: '0.5rem', alignItems: 'center' }
 
 export interface OfferListProps {
   offers: readonly OfferRow[]
@@ -20,14 +18,14 @@ export interface OfferListProps {
 /** The open offers as a single-choice list, or the reason there is nothing to choose. */
 export const OfferList = (react: ReactLike, props: OfferListProps): unknown => {
   const h = react.createElement
-  if (props.offers.length === 0) return h('p', null, NO_OFFERS_TEXT)
+  if (props.offers.length === 0) return h('p', { style: HINT }, NO_OFFERS_TEXT)
   return h(
     'div',
-    { role: 'radiogroup', 'aria-label': 'Server', style: LIST_STYLE },
+    { role: 'radiogroup', 'aria-label': 'Server', style: SECTION },
     ...props.offers.map((offer) =>
       h(
         'label',
-        { key: offer.slot, style: ROW_STYLE },
+        { key: offer.slot, style: { ...ROW, flexWrap: 'nowrap', cursor: 'pointer' } },
         h('input', {
           type: 'radio',
           name: 'selfhosted-agents-slot',
@@ -36,7 +34,7 @@ export const OfferList = (react: ReactLike, props: OfferListProps): unknown => {
           disabled: props.disabled,
           onChange: () => props.onChoose(offer.slot),
         }),
-        h('span', null, `${offer.label} (${offer.slot})`),
+        h('span', { style: TEXT }, `${offer.label} (${offer.slot})`),
       ),
     ),
   )
@@ -85,9 +83,9 @@ export const createConfiguration = (deps: CreateConfigurationDeps) =>
 
     const list =
       error !== ''
-        ? h('p', { role: 'alert' }, `${ERROR_TEXT}${error}`)
+        ? h('p', { role: 'alert', style: ERROR }, `${ERROR_TEXT}${error}`)
         : offers === undefined
-          ? h('p', null, LOADING_TEXT)
+          ? h('p', { style: HINT }, LOADING_TEXT)
           : OfferList(react, {
               offers,
               slot: props.config.slot,
@@ -95,5 +93,5 @@ export const createConfiguration = (deps: CreateConfigurationDeps) =>
               onChoose: (slot) => props.onChange({ slot }),
             })
 
-    return h('div', null, props.harnessControl, list)
+    return h('div', { style: SECTION }, props.harnessControl, list)
   }

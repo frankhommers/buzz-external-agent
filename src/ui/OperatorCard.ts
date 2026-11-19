@@ -1,15 +1,40 @@
 import type { Handoff, OfferInput, Operator, OperatorView, RequestId } from '../buzz/operator'
 import type { SettingsCardProps } from '../buzz/types'
 import type { ReactLike } from './OwnerCard'
+import {
+  buttonStyle,
+  CARD,
+  ERROR,
+  FIELD,
+  FIELD_ROW,
+  HEADING,
+  HINT,
+  INPUT,
+  LABEL,
+  LIST,
+  LIST_ITEM,
+  LIST_ROW,
+  NO_NOTICE,
+  type Notice,
+  noticeProps,
+  PRE,
+  ROW,
+  SECTION,
+  TABLE,
+  TABLE_WRAP,
+  TD,
+  TD_KEY,
+  TD_OWNER_INPUT,
+  TEXT,
+  TEXTAREA,
+  TH,
+  WIDE_FIELD,
+} from './styles'
 
 export const TEMPLATE_HELP =
   'Placeholders: {name}, {slot}, {host}, {relay}, {pubkey}, {npub}, {auth_tag}, {file}. ' +
   "{host} = the slot's server label, {relay} = the community relay URL. " +
   'Do not put quotes around placeholders; values are shell-quoted automatically.'
-
-const PANEL_STYLE = { padding: 'var(--space-panel-inset)' }
-const ROW_STYLE = { display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }
-const PRE_STYLE = { whiteSpace: 'pre-wrap', wordBreak: 'break-all' }
 
 /** Form fields being edited, by key (`add.slot`, `import`, `template`, `offer.<slot>`, …). */
 export type Drafts = Record<string, string>
@@ -17,7 +42,7 @@ export type Drafts = Record<string, string>
 export interface OperatorPanelProps {
   view: OperatorView
   busy: boolean
-  notice: string
+  notice: Notice
   drafts: Drafts
   onDraft(key: string, value: string): void
   onOffer(input: OfferInput): void
@@ -38,136 +63,162 @@ export const OperatorPanel = (react: ReactLike, props: OperatorPanelProps): unkn
   const h = react.createElement
   const { view, busy, drafts } = props
   const draft = (key: string, fallback = ''): string => drafts[key] ?? fallback
-  const field = (key: string, label: string, placeholder: string, fallback = ''): unknown =>
+  const input = (key: string, placeholder: string, extra: Record<string, unknown> = {}): unknown =>
     h('input', {
       type: 'text',
-      value: draft(key, fallback),
+      value: draft(key),
       placeholder,
-      'aria-label': label,
+      spellCheck: false,
+      style: INPUT,
       onChange: (event: ChangeEvent) => props.onDraft(key, event.target.value),
+      ...extra,
     })
+  /** A text input under a visible label; `wide` gives it a whole row (for a full npub). */
+  const field = (key: string, label: string, placeholder: string, wide = false): unknown =>
+    h(
+      'label',
+      { style: wide ? WIDE_FIELD : FIELD },
+      h('span', { style: LABEL }, label),
+      input(key, placeholder),
+    )
   const area = (key: string, label: string, placeholder: string, fallback = ''): unknown =>
-    h('textarea', {
-      value: draft(key, fallback),
-      placeholder,
-      'aria-label': label,
-      rows: 3,
-      onChange: (event: ChangeEvent) => props.onDraft(key, event.target.value),
-    })
+    h(
+      'label',
+      { style: WIDE_FIELD },
+      h('span', { style: LABEL }, label),
+      h('textarea', {
+        value: draft(key, fallback),
+        placeholder,
+        rows: 3,
+        spellCheck: false,
+        style: TEXTAREA,
+        onChange: (event: ChangeEvent) => props.onDraft(key, event.target.value),
+      }),
+    )
   const button = (label: string, onClick: () => void): unknown =>
-    h('button', { type: 'button', disabled: busy, onClick }, label)
+    h('button', { type: 'button', disabled: busy, onClick, style: buttonStyle(busy) }, label)
+  const actions = (...children: unknown[]): unknown => h('div', { style: ROW }, ...children)
+  const heading = (text: string): unknown => h('h3', { style: HEADING }, text)
+  const hint = (text: string): unknown => h('p', { style: HINT }, text)
 
-  const slotsSection = h(
+  const slotsTable = h(
     'div',
-    null,
-    h('h3', null, 'Servers'),
-    view.slots.length === 0
-      ? h('p', null, 'No servers yet. Add one below or import a list.')
-      : h(
-          'table',
+    { style: TABLE_WRAP },
+    h(
+      'table',
+      { style: TABLE },
+      h(
+        'thead',
+        null,
+        h(
+          'tr',
           null,
-          h(
-            'thead',
-            null,
-            h(
-              'tr',
-              null,
-              ...['Server', 'Slot', 'Host key', 'Owner', 'State', ''].map((title) =>
-                h('th', { key: title }, title),
-              ),
-            ),
+          ...['Server', 'Slot', 'Host key', 'Owner', 'State', ''].map((title) =>
+            h('th', { key: title, style: TH }, title),
           ),
+        ),
+      ),
+      h(
+        'tbody',
+        null,
+        ...view.slots.map((slot) =>
           h(
-            'tbody',
-            null,
-            ...view.slots.map((slot) =>
-              h(
-                'tr',
-                { key: slot.slot },
-                h('td', null, slot.label),
-                h('td', null, slot.slot),
-                h('td', null, slot.fingerprint),
-                h(
+            'tr',
+            { key: slot.slot },
+            h('td', { style: TD }, slot.label),
+            h('td', { style: TD }, slot.slot),
+            h('td', { style: TD_KEY }, slot.fingerprint),
+            slot.state === 'open'
+              ? h(
                   'td',
-                  null,
-                  slot.state === 'open'
-                    ? field(`offer.${slot.slot}`, `Owner npub for ${slot.slot}`, 'npub1…')
-                    : slot.owner,
-                ),
-                h('td', null, slot.state),
-                h(
-                  'td',
-                  null,
-                  slot.state === 'open'
-                    ? button('Offer', () =>
-                        props.onOfferOpen(slot.slot, draft(`offer.${slot.slot}`)),
-                      )
-                    : null,
-                ),
-              ),
+                  { style: TD_OWNER_INPUT },
+                  input(`offer.${slot.slot}`, 'npub1…', {
+                    'aria-label': `Owner npub for ${slot.slot}`,
+                  }),
+                )
+              : h('td', { style: TD_KEY }, slot.owner),
+            h('td', { style: TD }, slot.state),
+            h(
+              'td',
+              { style: TD },
+              slot.state === 'open'
+                ? button('Offer', () => props.onOfferOpen(slot.slot, draft(`offer.${slot.slot}`)))
+                : null,
             ),
           ),
         ),
-    button('Check now', props.onCheck),
+      ),
+    ),
+  )
+
+  const slotsSection = h(
+    'div',
+    { style: SECTION },
+    heading('Servers'),
+    view.slots.length === 0 ? hint('No servers yet. Add one below or import a list.') : slotsTable,
+    actions(button('Check now', props.onCheck)),
   )
 
   const addSection = h(
     'div',
-    null,
-    h('h3', null, 'Offer a server'),
-    h(
-      'p',
-      null,
+    { style: SECTION },
+    heading('Offer a server'),
+    hint(
       'Take the host key from your provisioning tool, or from ssh-keyscan checked against a ' +
         'known fingerprint. Only ssh-ed25519 keys are accepted.',
     ),
     h(
       'div',
-      { style: ROW_STYLE },
+      { style: FIELD_ROW },
       field('add.slot', 'Slot id', 'vps-1'),
       field('add.label', 'Server label', 'My server'),
-      field('add.owner', 'Owner npub', 'npub1…'),
+      field('add.owner', 'Owner npub', 'npub1…', true),
+      area('add.hostKey', 'SSH host public key', 'ssh-ed25519 AAAA…'),
     ),
-    area('add.hostKey', 'SSH host public key', 'ssh-ed25519 AAAA…'),
-    button('Offer', () =>
-      props.onOffer({
-        slot: draft('add.slot'),
-        label: draft('add.label'),
-        hostKeyText: draft('add.hostKey'),
-        owner: draft('add.owner'),
-      }),
+    actions(
+      button('Offer', () =>
+        props.onOffer({
+          slot: draft('add.slot'),
+          label: draft('add.label'),
+          hostKeyText: draft('add.hostKey'),
+          owner: draft('add.owner'),
+        }),
+      ),
     ),
-    h('h3', null, 'Import servers'),
-    h('p', null, 'A JSON list of {"slot", "label", "hostKey"}; offer each one above.'),
+  )
+
+  const importSection = h(
+    'div',
+    { style: SECTION },
+    heading('Import servers'),
+    hint('A JSON list of {"slot", "label", "hostKey"}; offer each one above.'),
     area(
       'import',
       'Servers as JSON',
       '[{"slot": "vps-1", "label": "…", "hostKey": "ssh-ed25519 …"}]',
     ),
-    button('Import', () => props.onImport(draft('import'))),
+    actions(button('Import', () => props.onImport(draft('import')))),
   )
 
   const installsSection = h(
     'div',
-    null,
-    h('h3', null, 'Install requests'),
+    { style: SECTION },
+    heading('Install requests'),
     view.installs.length === 0
-      ? h('p', null, 'No open install requests.')
+      ? hint('No open install requests.')
       : h(
           'ul',
-          null,
+          { style: LIST },
           ...view.installs.map((install) =>
             h(
               'li',
-              { key: install.pubkey },
+              { key: install.pubkey, style: LIST_ITEM },
               h(
                 'p',
-                null,
+                { style: { ...TEXT, overflowWrap: 'anywhere' } },
                 `${install.name} on ${install.label} (${install.slot}) for ${install.owner}`,
               ),
-              h(
-                'div',
-                { style: ROW_STYLE },
+              actions(
                 button(`Download ${install.handoff.filename}`, () =>
                   props.onDownload(install.handoff),
                 ),
@@ -183,10 +234,14 @@ export const OperatorPanel = (react: ReactLike, props: OperatorPanelProps): unkn
               ),
               install.handoff.command === undefined
                 ? null
-                : h('pre', { style: PRE_STYLE }, install.handoff.command),
+                : h('pre', { style: PRE }, install.handoff.command),
               install.commandError === undefined
                 ? null
-                : h('p', { role: 'alert' }, `Command template: ${install.commandError}`),
+                : h(
+                    'p',
+                    { role: 'alert', style: ERROR },
+                    `Command template: ${install.commandError}`,
+                  ),
             ),
           ),
         ),
@@ -195,20 +250,20 @@ export const OperatorPanel = (react: ReactLike, props: OperatorPanelProps): unkn
   const retireRow = (id: RequestId, text: string): unknown =>
     h(
       'li',
-      { key: `${id.slot}:${id.pubkey}`, style: ROW_STYLE },
-      h('span', null, text),
+      { key: `${id.slot}:${id.pubkey}`, style: LIST_ROW },
+      h('span', { style: { ...TEXT, flex: '1 1 12rem', overflowWrap: 'anywhere' } }, text),
       button('Retired', () => props.onConfirm('retired', id)),
     )
   const noRetires = view.retires.length === 0 && view.adopted.length === 0
   const retiresSection = h(
     'div',
-    null,
-    h('h3', null, 'Retire requests'),
+    { style: SECTION },
+    heading('Retire requests'),
     noRetires
-      ? h('p', null, 'No open retire requests.')
+      ? hint('No open retire requests.')
       : h(
           'ul',
-          null,
+          { style: LIST },
           ...view.retires.map((retire) =>
             retireRow(
               retire.id,
@@ -223,38 +278,39 @@ export const OperatorPanel = (react: ReactLike, props: OperatorPanelProps): unkn
 
   const ownersSection = h(
     'div',
-    null,
-    h('h3', null, 'Known owners'),
-    h(
-      'p',
-      null,
+    { style: SECTION },
+    heading('Known owners'),
+    hint(
       'Owners whose existing agents you run. Their messages are read even without a server ' +
         'offered here, so they can ask you to retire an agent. One npub per line.',
     ),
     area('owners', 'Known owners', 'npub1…', view.owners.join('\n')),
-    button('Save owners', () => props.onSaveOwners(draft('owners', view.owners.join('\n')))),
+    actions(
+      button('Save owners', () => props.onSaveOwners(draft('owners', view.owners.join('\n')))),
+    ),
   )
 
   const templateSection = h(
     'div',
-    null,
-    h('h3', null, 'Command template'),
-    h('p', null, TEMPLATE_HELP),
+    { style: SECTION },
+    heading('Command template'),
+    hint(TEMPLATE_HELP),
     area(
       'template',
       'Command template',
       'ansible-playbook deploy.yml -e host={host}',
       view.template,
     ),
-    button('Save template', () => props.onSaveTemplate(draft('template', view.template))),
+    actions(button('Save template', () => props.onSaveTemplate(draft('template', view.template)))),
   )
 
   return h(
     'section',
-    { className: 'ui-card', style: PANEL_STYLE },
-    props.notice === '' ? null : h('p', { role: 'status' }, props.notice),
+    { className: 'ui-card', style: CARD },
+    props.notice.text === '' ? null : h('p', noticeProps(props.notice), props.notice.text),
     slotsSection,
     addSection,
+    importSection,
     installsSection,
     retiresSection,
     ownersSection,
@@ -303,7 +359,7 @@ export const operatorCard = (deps: OperatorCardDeps) =>
     const { react, operator } = deps
     const [view, setView] = react.useState<OperatorView | undefined>(undefined)
     const [drafts, setDrafts] = react.useState<Drafts>({})
-    const [notice, setNotice] = react.useState('')
+    const [notice, setNotice] = react.useState<Notice>(NO_NOTICE)
     const [busy, setBusy] = react.useState(false)
 
     react.useEffect(() => {
@@ -332,14 +388,14 @@ export const operatorCard = (deps: OperatorCardDeps) =>
     const run = (action: () => Promise<string>): void => {
       if (busy || !props.active()) return
       setBusy(true)
-      setNotice('')
+      setNotice(NO_NOTICE)
       action().then(
         (done) => {
-          setNotice(done)
+          setNotice({ text: done, error: false })
           setBusy(false)
         },
         (error: unknown) => {
-          setNotice(messageOf(error))
+          setNotice({ text: messageOf(error), error: true })
           setBusy(false)
         },
       )
@@ -389,7 +445,7 @@ export const operatorCard = (deps: OperatorCardDeps) =>
         try {
           downloadFile(handoff.filename, handoff.fileText)
         } catch (error) {
-          setNotice(messageOf(error))
+          setNotice({ text: messageOf(error), error: true })
         }
       },
       onCopy: (text, what) =>

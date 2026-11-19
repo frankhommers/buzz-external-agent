@@ -2,6 +2,7 @@ import type { AgentStatusView, Owner } from '../buzz/owner'
 import type { Agent, AgentAddedTab } from '../buzz/types'
 import { RUNTIME } from '../constants'
 import type { ReactLike } from './OwnerCard'
+import { buttonStyle, CARD, ERROR, ROW, TEXT } from './styles'
 
 const LOADING_TEXT = 'Checking the server…'
 
@@ -13,24 +14,33 @@ export interface StatusViewProps {
   onCancelRetire(): void
 }
 
-/** Plain status text, Retire while it is offered, and Cancel retire request while one waits. */
+/**
+ * Plain status text, Retire while it is offered, and Cancel retire request while one waits.
+ * `notice` is only ever a failure, shown as an alert.
+ */
 export const StatusView = (react: ReactLike, props: StatusViewProps): unknown => {
   const h = react.createElement
+  const button = (label: string, onClick: () => void): unknown =>
+    h(
+      'button',
+      { type: 'button', disabled: props.busy, onClick, style: buttonStyle(props.busy) },
+      label,
+    )
+  const canRetire = props.status?.canRetire === true
+  const canCancelRetire = props.status?.canCancelRetire === true
   return h(
     'section',
-    { style: { padding: 'var(--space-panel-inset)' } },
-    h('p', null, props.status?.text ?? LOADING_TEXT),
-    props.status?.canRetire === true
-      ? h('button', { type: 'button', disabled: props.busy, onClick: props.onRetire }, 'Retire')
-      : null,
-    props.status?.canCancelRetire === true
+    { style: CARD },
+    h('p', { style: TEXT }, props.status?.text ?? LOADING_TEXT),
+    canRetire || canCancelRetire
       ? h(
-          'button',
-          { type: 'button', disabled: props.busy, onClick: props.onCancelRetire },
-          'Cancel retire request',
+          'div',
+          { style: ROW },
+          canRetire ? button('Retire', props.onRetire) : null,
+          canCancelRetire ? button('Cancel retire request', props.onCancelRetire) : null,
         )
       : null,
-    props.notice === '' ? null : h('p', { role: 'status' }, props.notice),
+    props.notice === '' ? null : h('p', { role: 'alert', style: ERROR }, props.notice),
   )
 }
 

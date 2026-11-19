@@ -66,7 +66,7 @@ const noop = (): void => {}
 const props = (overrides: Partial<OperatorPanelProps> = {}): OperatorPanelProps => ({
   view,
   busy: false,
-  notice: '',
+  notice: { text: '', error: false },
   drafts: {},
   onDraft: noop,
   onOffer: noop,

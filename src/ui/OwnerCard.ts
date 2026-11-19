@@ -3,6 +3,24 @@ import type { Owner, OwnerView } from '../buzz/owner'
 import type { Relay } from '../buzz/relay'
 import type { SettingsCardProps } from '../buzz/types'
 import { encodeNpub } from '../core/keys'
+import {
+  buttonStyle,
+  CARD,
+  ERROR,
+  HEADING,
+  HINT,
+  INPUT,
+  LABEL,
+  LIST,
+  LIST_ROW,
+  NO_NOTICE,
+  type Notice,
+  noticeProps,
+  ROW,
+  SECTION,
+  TEXT,
+  WIDE_FIELD,
+} from './styles'
 
 /** The slice of the host React (`ctx.react`) this card uses. */
 export interface ReactLike {
@@ -32,9 +50,6 @@ export const ADOPT_STATE_TEXT: Record<AdoptState, string> = {
 
 export const ADOPTED_NOTICE = 'It appears on the Agents page after Buzz reconnects or restarts.'
 
-const PANEL_STYLE = { padding: 'var(--space-panel-inset)' }
-const ROW_STYLE = { display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }
-
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
@@ -47,7 +62,7 @@ export const ownerCard = (deps: OwnerCardDeps) =>
     const [view, setView] = react.useState<OwnerView | undefined>(undefined)
     const [viewError, setViewError] = react.useState('')
     const [operatorDraft, setOperatorDraft] = react.useState<string | undefined>(undefined)
-    const [notice, setNotice] = react.useState('')
+    const [notice, setNotice] = react.useState<Notice>(NO_NOTICE)
     const [busy, setBusy] = react.useState(false)
     const [adoptables, setAdoptables] = react.useState<AdoptableList | undefined>(undefined)
 
@@ -90,49 +105,59 @@ export const ownerCard = (deps: OwnerCardDeps) =>
     const run = (action: () => Promise<string>): void => {
       if (busy || !props.active()) return
       setBusy(true)
-      setNotice('')
+      setNotice(NO_NOTICE)
       action().then(
         (done) => {
-          setNotice(done)
+          setNotice({ text: done, error: false })
           setBusy(false)
         },
         (error: unknown) => {
-          setNotice(messageOf(error))
+          setNotice({ text: messageOf(error), error: true })
           setBusy(false)
         },
       )
     }
+    const button = (label: string, onClick: () => void): unknown =>
+      h('button', { type: 'button', disabled: busy, onClick, style: buttonStyle(busy) }, label)
+    const heading = (text: string): unknown => h('h3', { style: HEADING }, text)
+    const hint = (text: string): unknown => h('p', { style: HINT }, text)
+    const item = (key: string, text: string, ...actions: unknown[]): unknown =>
+      h(
+        'li',
+        { key, style: LIST_ROW },
+        h('span', { style: { ...TEXT, flex: '1 1 12rem' } }, text),
+        ...actions,
+      )
 
     const operatorValue = operatorDraft ?? view?.operator ?? ''
 
     const operatorSection = h(
       'div',
-      null,
-      h('h3', null, 'Operator'),
-      h('p', null, 'The Buzz account that runs your servers. Paste their npub.'),
+      { style: SECTION },
+      heading('Operator'),
+      hint('The Buzz account that runs your servers. Paste their npub.'),
       h(
-        'div',
-        { style: ROW_STYLE },
+        'label',
+        { style: WIDE_FIELD },
+        h('span', { style: LABEL }, 'Operator npub'),
         h('input', {
           type: 'text',
           value: operatorValue,
           placeholder: 'npub1…',
-          'aria-label': 'Operator npub',
+          spellCheck: false,
+          style: INPUT,
           onChange: (event: { target: { value: string } }) => setOperatorDraft(event.target.value),
         }),
-        h(
-          'button',
-          {
-            type: 'button',
-            disabled: busy,
-            onClick: () =>
-              run(async () => {
-                await owner.saveOperator(operatorValue)
-                setOperatorDraft(undefined)
-                return 'Operator saved.'
-              }),
-          },
-          'Save',
+      ),
+      h(
+        'div',
+        { style: ROW },
+        button('Save', () =>
+          run(async () => {
+            await owner.saveOperator(operatorValue)
+            setOperatorDraft(undefined)
+            return 'Operator saved.'
+          }),
         ),
       ),
     )
@@ -140,79 +165,60 @@ export const ownerCard = (deps: OwnerCardDeps) =>
     const offers = view?.offers ?? []
     const offersSection = h(
       'div',
-      null,
-      h('h3', null, 'Servers offered to you'),
+      { style: SECTION },
+      heading('Servers offered to you'),
       offers.length === 0
-        ? h('p', null, 'No servers offered yet.')
+        ? hint('No servers offered yet.')
         : h(
             'ul',
-            null,
+            { style: LIST },
             ...offers.map((offer) =>
-              h(
-                'li',
-                { key: offer.slot },
+              item(
+                offer.slot,
                 `${offer.label} (${offer.slot}) — use it in New agent → Self-hosted agent.`,
               ),
             ),
           ),
       h(
-        'button',
-        {
-          type: 'button',
-          disabled: busy,
-          onClick: () =>
-            run(async () => {
-              await owner.poll()
-              return 'Checked for messages from the operator.'
-            }),
-        },
-        'Check now',
+        'div',
+        { style: ROW },
+        button('Check now', () =>
+          run(async () => {
+            await owner.poll()
+            return 'Checked for messages from the operator.'
+          }),
+        ),
       ),
     )
 
     const agents = view?.agents ?? []
     const agentsSection = h(
       'div',
-      null,
-      h('h3', null, 'Your self-hosted agents'),
+      { style: SECTION },
+      heading('Your self-hosted agents'),
       agents.length === 0
-        ? h('p', null, 'None in this community.')
+        ? hint('None in this community.')
         : h(
             'ul',
-            null,
+            { style: LIST },
             ...agents.map((agent) =>
-              h(
-                'li',
-                { key: agent.pubkey, style: ROW_STYLE },
-                h('span', null, `${agent.name || shortNpub(agent.pubkey)} — ${agent.status}`),
+              item(
+                agent.pubkey,
+                `${agent.name || shortNpub(agent.pubkey)} — ${agent.status}`,
                 agent.canRetire
-                  ? h(
-                      'button',
-                      {
-                        type: 'button',
-                        disabled: busy,
-                        onClick: () =>
-                          run(async () => {
-                            await owner.retire(agent.pubkey)
-                            return 'Asked the operator to retire the agent.'
-                          }),
-                      },
-                      'Retire',
+                  ? button('Retire', () =>
+                      run(async () => {
+                        await owner.retire(agent.pubkey)
+                        return 'Asked the operator to retire the agent.'
+                      }),
                     )
                   : null,
                 agent.canCancelRetire
-                  ? h(
-                      'button',
-                      {
-                        type: 'button',
-                        disabled: busy,
-                        onClick: () =>
-                          run(async () => {
-                            await owner.cancelRetire(agent.pubkey)
-                            return 'Retire request cancelled.'
-                          }),
-                      },
-                      'Cancel retire request',
+                  ? button('Cancel retire request', () =>
+                      run(async () => {
+                        await owner.cancelRetire(agent.pubkey)
+                        return 'Retire request cancelled.'
+                      }),
                     )
                   : null,
               ),
@@ -222,37 +228,29 @@ export const ownerCard = (deps: OwnerCardDeps) =>
 
     const adoptList =
       adoptables === undefined
-        ? h('p', null, 'Looking for your agents…')
+        ? hint('Looking for your agents…')
         : !adoptables.ok
-          ? h('p', null, `Could not read your agents: ${adoptables.error}`)
+          ? h(
+              'p',
+              { role: 'alert', style: ERROR },
+              `Could not read your agents: ${adoptables.error}`,
+            )
           : adoptables.items.length === 0
-            ? h('p', null, 'You have no agents in this community.')
+            ? hint('You have no agents in this community.')
             : h(
                 'ul',
-                null,
-                ...adoptables.items.map((item) =>
-                  h(
-                    'li',
-                    { key: item.pubkey, style: ROW_STYLE },
-                    h(
-                      'span',
-                      null,
-                      `${item.name || shortNpub(item.pubkey)} — ${ADOPT_STATE_TEXT[item.state]}`,
-                    ),
-                    item.state === 'ready'
-                      ? h(
-                          'button',
-                          {
-                            type: 'button',
-                            disabled: busy,
-                            onClick: () =>
-                              run(async () => {
-                                await adopt(relay, item.pubkey)
-                                loadAdoptables()
-                                return ADOPTED_NOTICE
-                              }),
-                          },
-                          'Bring into Buzz',
+                { style: LIST },
+                ...adoptables.items.map((adoptable) =>
+                  item(
+                    adoptable.pubkey,
+                    `${adoptable.name || shortNpub(adoptable.pubkey)} — ${ADOPT_STATE_TEXT[adoptable.state]}`,
+                    adoptable.state === 'ready'
+                      ? button('Bring into Buzz', () =>
+                          run(async () => {
+                            await adopt(relay, adoptable.pubkey)
+                            loadAdoptables()
+                            return ADOPTED_NOTICE
+                          }),
                         )
                       : null,
                   ),
@@ -260,18 +258,18 @@ export const ownerCard = (deps: OwnerCardDeps) =>
               )
     const adoptSection = h(
       'div',
-      null,
-      h('h3', null, 'Bring into Buzz'),
-      h('p', null, 'Agents you already run elsewhere and own can be listed here as hosted.'),
+      { style: SECTION },
+      heading('Bring into Buzz'),
+      hint('Agents you already run elsewhere and own can be listed here as hosted.'),
       adoptList,
-      h('button', { type: 'button', disabled: busy, onClick: loadAdoptables }, 'Refresh'),
+      h('div', { style: ROW }, button('Refresh', loadAdoptables)),
     )
 
     return h(
       'section',
-      { className: 'ui-card', style: PANEL_STYLE },
-      viewError === '' ? null : h('p', { role: 'alert' }, viewError),
-      notice === '' ? null : h('p', { role: 'status' }, notice),
+      { className: 'ui-card', style: CARD },
+      viewError === '' ? null : h('p', { role: 'alert', style: ERROR }, viewError),
+      notice.text === '' ? null : h('p', noticeProps(notice), notice.text),
       operatorSection,
       offersSection,
       agentsSection,
