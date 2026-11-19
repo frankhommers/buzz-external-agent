@@ -50,7 +50,7 @@ Changed your mind while the operator has not confirmed yet? **Cancel retire requ
 the agent back to its earlier status on this device. It only cancels locally: the request
 already sent stays with the operator, who may still stop the agent. Tell the operator too.
 
-If Delete was refused and you then retired the agent, Delete may need a second attempt.
+If Delete is refused right after Retired while Buzz is reconnecting, try Delete again.
 
 ## Limits
 

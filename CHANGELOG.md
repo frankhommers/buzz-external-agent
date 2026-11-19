@@ -17,9 +17,17 @@ refused.
 - A failure to sign the agent sign-in now fails cleanly; relay text in errors is capped at
   200 characters without control characters.
 - `scripts/legacy-record.ts`: test-only tool that publishes an old-Buzz-style agent record.
-- Known limitations: hosted agents always look online; Retire before Delete; right after a
-  refused Delete, Delete may need a second attempt; Cancel retire request only cancels
-  locally; updating the plugin on Buzz 1.0.5 means delete and add again.
+- Creating an agent while an earlier create for the same server is still publishing joins
+  that create (same name) or is refused (other name), so it can no longer leave Buzz with an
+  agent that cannot be activated or deleted. A create whose setup changed meanwhile fails.
+- A retried create reads the agent profile fresh from the relay, so a stale read cannot
+  discard a published key.
+- A sent agent whose profile was never published now asks to retire it, not remove it.
+- Activate and Delete wait up to 5 seconds for Buzz to finish reconnecting instead of
+  failing at once.
+- Known limitations: hosted agents always look online; Retire before Delete; if Delete is
+  refused right after Retired while Buzz is reconnecting, try Delete again; Cancel retire
+  request only cancels locally; updating the plugin on Buzz 1.0.5 means delete and add again.
 
 ## 0.9.0-beta.1
 

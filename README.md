@@ -80,7 +80,7 @@ no message is sent to yourself.
   request was never sent can be deleted directly. Once sending was attempted, even if it
   failed, the agent must be retired first; agents brought into Buzz or set up on another
   device too.
-- Right after a refused Delete, Delete may need a second attempt.
+- If Delete is refused right after Retired while Buzz is reconnecting, try Delete again.
 - **Cancel retire request** only cancels on this device. The request already sent stays with
   the operator, who may still act on it and stop the agent.
 - Hosted agents always appear online in Buzz. Use the **Server** tab for the real status.
