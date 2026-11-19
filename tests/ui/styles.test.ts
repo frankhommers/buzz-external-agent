@@ -47,6 +47,17 @@ const expectBorderedField = (node: Node): void => {
   expect(style?.width).toBe('100%')
 }
 
+/** A list row: text then actions in a wrapping row; the text has no fixed flex basis. */
+const expectHorizontalRow = (row: Node): void => {
+  expect(styleOf(row)?.display).toBe('flex')
+  expect(styleOf(row)?.flexDirection).toBe('row')
+  expect(styleOf(row)?.flexWrap).toBe('wrap')
+  const text = row.children.find((c) => (c as Node)?.type === 'span') as Node | undefined
+  expect(text).toBeDefined()
+  expect(styleOf(text)?.flex).toBe('1 1 auto')
+  expect(row.children.some((c) => (c as Node)?.type === 'button')).toBe(true)
+}
+
 const expectHostButtons = (tree: unknown): void => {
   const buttons = findAll(tree, (n) => n.type === 'button')
   expect(buttons.length).toBeGreaterThan(0)
@@ -176,8 +187,45 @@ describe('operator card', () => {
     const input = findAll(tree, (n) => n.props?.['aria-label'] === 'Owner npub for vps-2')[0]
     expect(input).toBeDefined()
     if (input !== undefined) expectBorderedField(input)
+    // A full 63-character npub fits: monospaced caption text in a cell of at least 32rem.
+    expect(styleOf(input)?.fontFamily).toBe('var(--font-mono)')
+    expect(styleOf(input)?.fontSize).toBe('var(--text-caption)')
     const cell = findAll(tree, (n) => n.type === 'td' && findAll(n, (c) => c === input).length > 0)
-    expect(styleOf(cell[0])?.minWidth).toBe('20rem')
+    expect(Number.parseFloat(String(styleOf(cell[0])?.minWidth))).toBeGreaterThanOrEqual(32)
+    expect(String(styleOf(cell[0])?.minWidth)).toEndWith('rem')
+  })
+
+  test('a narrow card scrolls the servers table instead of clipping it', () => {
+    const wrap = findAll(
+      tree,
+      (n) => n.type === 'div' && findAll(n, (c) => c.type === 'table').length > 0,
+    )
+    const direct = wrap.find((n) => n.children.some((c) => (c as Node)?.type === 'table'))
+    expect(styleOf(direct)?.overflowX).toBe('auto')
+    expect(styleOf(direct)?.maxWidth).toBe('100%')
+  })
+
+  test('retire rows lay out text then action side by side, wrapping when narrow', () => {
+    const withRetires = OperatorPanel(
+      treeReact(),
+      operatorProps({
+        view: {
+          ...operatorProps().view,
+          retires: [
+            {
+              id: { slot: 'vps-1', pubkey: 'b'.repeat(64), owner: 'f'.repeat(64) },
+              pubkey: 'b'.repeat(64),
+              slot: 'vps-1',
+              label: 'One',
+              owner: 'npub1x',
+            },
+          ],
+        },
+      }),
+    )
+    const rows = findAll(withRetires, (n) => n.type === 'li')
+    expect(rows).toHaveLength(1)
+    for (const row of rows) expectHorizontalRow(row)
   })
 
   test('an error line uses the danger colour, a result line does not', () => {
@@ -238,6 +286,25 @@ describe('owner card', () => {
     const alert = findAll(tree, (n) => n.props?.role === 'alert')[0]
     expect(textOf(alert)).toBe('Enter the operator as an npub')
     expect(styleOf(alert)?.color).toBe('var(--text-danger)')
+  })
+
+  test('agent rows lay out text then actions side by side, wrapping when narrow', () => {
+    const view = {
+      operator: '',
+      offers: [],
+      agents: [
+        {
+          pubkey: 'd'.repeat(64),
+          name: 'Robo',
+          status: 'Installed',
+          canRetire: true,
+          canCancelRetire: false,
+        },
+      ],
+    }
+    const rows = findAll(card([view]), (n) => n.type === 'li')
+    expect(rows).toHaveLength(1)
+    for (const row of rows) expectHorizontalRow(row)
   })
 
   test('a view error shows in the danger colour', () => {

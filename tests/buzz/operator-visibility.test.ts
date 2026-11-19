@@ -127,6 +127,31 @@ describe('operatorCardVisibility', () => {
     expect(ownerListeners.size).toBe(0)
   })
 
+  test('hidden, without throwing, when reading the settings fails', () => {
+    const visibility = operatorCardVisibility({
+      relay: { snapshot: () => snapshot(), subscribe: () => () => {} },
+      owner: { subscribe: () => () => {} },
+      storeFor: () => {
+        throw new Error('SecurityError: storage is not available')
+      },
+    })
+    expect(visibility.snapshot()).toBe(false)
+  })
+
+  test('hidden, without throwing, when reading the relay snapshot fails', () => {
+    const visibility = operatorCardVisibility({
+      relay: {
+        snapshot: () => {
+          throw new Error('relay gone')
+        },
+        subscribe: () => () => {},
+      },
+      owner: { subscribe: () => () => {} },
+      storeFor: storesWith(encodeNpub(viewer)),
+    })
+    expect(visibility.snapshot()).toBe(false)
+  })
+
   test('ensure has nothing to load and returns a release', () => {
     const release = setup(undefined).visibility.ensure()
     expect(typeof release).toBe('function')

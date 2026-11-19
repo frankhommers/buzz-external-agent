@@ -17,8 +17,8 @@ import {
   type Notice,
   noticeProps,
   ROW,
+  ROW_TEXT,
   SECTION,
-  TEXT,
   WIDE_FIELD,
 } from './styles'
 
@@ -122,12 +122,7 @@ export const ownerCard = (deps: OwnerCardDeps) =>
     const heading = (text: string): unknown => h('h3', { style: HEADING }, text)
     const hint = (text: string): unknown => h('p', { style: HINT }, text)
     const item = (key: string, text: string, ...actions: unknown[]): unknown =>
-      h(
-        'li',
-        { key, style: LIST_ROW },
-        h('span', { style: { ...TEXT, flex: '1 1 12rem' } }, text),
-        ...actions,
-      )
+      h('li', { key, style: LIST_ROW }, h('span', { style: ROW_TEXT }, text), ...actions)
 
     const operatorValue = operatorDraft ?? view?.operator ?? ''
 

@@ -132,8 +132,11 @@ export const LIST_ITEM: Style = {
   borderRadius: 'var(--radius-row)',
 }
 
-/** A list row whose text and actions sit side by side. */
-export const LIST_ROW: Style = { ...LIST_ITEM, ...ROW }
+/** A list row: text then actions side by side, the actions wrapping below when narrow. */
+export const LIST_ROW: Style = { ...LIST_ITEM, ...ROW, flexDirection: 'row' }
+
+/** The text of a list row: takes the free width, sized by its content. */
+export const ROW_TEXT: Style = { ...TEXT, flex: '1 1 auto', minWidth: 0, overflowWrap: 'anywhere' }
 
 /** Lets a wide table scroll inside a narrow card instead of squeezing its words. */
 export const TABLE_WRAP: Style = { overflowX: 'auto', maxWidth: '100%' }
@@ -172,8 +175,15 @@ export const TD_KEY: Style = {
   maxWidth: '18rem',
 }
 
-/** The owner cell of an open slot, wide enough for a full npub input. */
-export const TD_OWNER_INPUT: Style = { ...TD, minWidth: '20rem' }
+/** The owner cell of an open slot: a full 63-character npub fits in OWNER_INPUT. */
+export const TD_OWNER_INPUT: Style = { ...TD, minWidth: '32rem' }
+
+/** A npub input in a table cell: monospaced caption text, so the whole npub shows. */
+export const OWNER_INPUT: Style = {
+  ...INPUT,
+  fontFamily: 'var(--font-mono)',
+  fontSize: 'var(--text-caption)',
+}
 
 export const PRE: Style = {
   margin: 0,

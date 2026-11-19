@@ -27,7 +27,14 @@ export interface OperatorCardVisibilityDeps {
  * Buzz owns the subscription (features/settings/service.ts:126-130).
  */
 export const operatorCardVisibility = (deps: OperatorCardVisibilityDeps): CardVisibility => ({
-  snapshot: () => isOperatorViewer(deps.relay.snapshot(), deps.storeFor),
+  // Runs inside Buzz's shared Settings publish: a throw would break every plugin's cards.
+  snapshot: () => {
+    try {
+      return isOperatorViewer(deps.relay.snapshot(), deps.storeFor)
+    } catch {
+      return false
+    }
+  },
   subscribe: (listener) => {
     const stopRelay = deps.relay.subscribe(listener)
     const stopOwner = deps.owner.subscribe(listener)

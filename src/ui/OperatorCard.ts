@@ -17,8 +17,10 @@ import {
   NO_NOTICE,
   type Notice,
   noticeProps,
+  OWNER_INPUT,
   PRE,
   ROW,
+  ROW_TEXT,
   SECTION,
   TABLE,
   TABLE_WRAP,
@@ -134,6 +136,7 @@ export const OperatorPanel = (react: ReactLike, props: OperatorPanelProps): unkn
                   { style: TD_OWNER_INPUT },
                   input(`offer.${slot.slot}`, 'npub1…', {
                     'aria-label': `Owner npub for ${slot.slot}`,
+                    style: OWNER_INPUT,
                   }),
                 )
               : h('td', { style: TD_KEY }, slot.owner),
@@ -251,7 +254,7 @@ export const OperatorPanel = (react: ReactLike, props: OperatorPanelProps): unkn
     h(
       'li',
       { key: `${id.slot}:${id.pubkey}`, style: LIST_ROW },
-      h('span', { style: { ...TEXT, flex: '1 1 12rem', overflowWrap: 'anywhere' } }, text),
+      h('span', { style: ROW_TEXT }, text),
       button('Retired', () => props.onConfirm('retired', id)),
     )
   const noRetires = view.retires.length === 0 && view.adopted.length === 0
