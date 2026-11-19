@@ -30,6 +30,7 @@ cleanup()
   fi
 }
 trap cleanup EXIT
+trap 'exit 1' INT TERM HUP
 
 # Messages passed here are static and never contain secrets.
 fail()
@@ -64,33 +65,62 @@ for tool in age jq; do
 done
 command -v "$BUZZ" >/dev/null 2>&1 || [ -x "$BUZZ" ] || fail "buzz CLI not found"
 
-printf '%s' "$PUBKEY" | grep -Eq '^[0-9a-f]{64}$' || fail "pubkey must be 64 lowercase hex characters"
+# Exact-match helper: whole value must be N chars of lowercase hex (no line-based matching).
+is_hex()
+{
+  [ "${#1}" -eq "$2" ] || return 1
+  case "$1" in
+    *[!0-9a-f]*) return 1 ;;
+  esac
+}
 
-case "$RELAY" in
-  *"'"* | *'
-'*) fail "relay url contains invalid characters" ;;
-esac
+is_hex "$PUBKEY" 64 || fail "pubkey must be 64 lowercase hex characters"
 
-case "$AUTH_TAG" in
-  *"'"*) fail "auth tag contains invalid characters" ;;
-esac
+# Relay: strict ws(s) URL; written single-quoted later.
+printf '%s' "$RELAY" | jq -Rse 'test("^wss?://[A-Za-z0-9.-]+(:[0-9]+)?(/[A-Za-z0-9._~/%-]*)?$")' \
+  >/dev/null 2>&1 || fail "relay must be a plain ws:// or wss:// url"
+
+# Auth tag: exactly one JSON document of the NIP-OA shape with canonical conditions.
+printf '%s' "$AUTH_TAG" | jq -s -e 'length == 1' >/dev/null 2>&1 || fail "auth tag must be one JSON document"
 AUTH_TAG=$(printf '%s' "$AUTH_TAG" | jq -ce '
+  def clause: (test("^kind=(0|[1-9][0-9]{0,4})$") and (.[5:] | tonumber <= 65535))
+    or (test("^created_at[<>](0|[1-9][0-9]{0,9})$") and (.[11:] | tonumber <= 4294967295));
   select(
     type == "array" and length == 4 and all(.[]; type == "string")
     and .[0] == "auth"
     and (.[1] | test("^[0-9a-f]{64}$"))
+    and (.[2] == "" or (.[2] | split("&") | all(.[]; clause)))
     and (.[3] | test("^[0-9a-f]{128}$"))
   )' 2>/dev/null) || fail "auth tag is not a valid NIP-OA auth tag"
 [ -n "$AUTH_TAG" ] || fail "auth tag is not a valid NIP-OA auth tag"
+# The value is embedded in single quotes: it must be a single line free of quotes.
+case "$AUTH_TAG" in
+  *"'"* | *'
+'*) fail "auth tag contains invalid characters" ;;
+esac
 
 [ -f "$SEALED" ] || fail "sealed file not found"
 [ -r "$HOST_KEY" ] || fail "host key not readable"
 ENV_DIR=$(dirname "$ENV_FILE")
 [ -d "$ENV_DIR" ] || fail "env file directory does not exist"
 
-# Decrypt into a shell variable only.
-NSEC=$(age -d -i "$HOST_KEY" "$SEALED" 2>/dev/null) || fail "could not decrypt sealed file"
-printf '%s' "$NSEC" | grep -Eq '^nsec1[02-9ac-hj-np-z]{58}$' || fail "decrypted secret is not a valid nsec"
+# Decrypt into a shell variable only. The trailing "x" preserves trailing newlines so the
+# plaintext can be checked exactly: nsec + one newline, nothing else.
+NSEC=$(age -d -i "$HOST_KEY" "$SEALED" 2>/dev/null && printf x) || fail "could not decrypt sealed file"
+NSEC=${NSEC%x}
+case "$NSEC" in
+  *'
+') NSEC=${NSEC%
+} ;;
+  *) fail "decrypted secret is not a valid nsec" ;;
+esac
+[ "${#NSEC}" -eq 63 ] || fail "decrypted secret is not a valid nsec"
+case "$NSEC" in
+  nsec1*[!02-9ac-hj-np-z]* | *'
+'*) fail "decrypted secret is not a valid nsec" ;;
+  nsec1*) ;;
+  *) fail "decrypted secret is not a valid nsec" ;;
+esac
 
 # Verify the key via the buzz CLI; the secret travels in the environment only.
 ACTUAL=$(BUZZ_PRIVATE_KEY=$NSEC BUZZ_RELAY_URL=$RELAY BUZZ_AUTH_TAG=$AUTH_TAG \
@@ -104,7 +134,7 @@ if [ -f "$ENV_FILE" ]; then
     >"$TMP_FILE" || [ $? -eq 1 ] || fail "could not read env file"
 fi
 {
-  printf 'BUZZ_RELAY_URL=%s\n' "$RELAY"
+  printf "BUZZ_RELAY_URL='%s'\n" "$RELAY"
   printf 'BUZZ_PRIVATE_KEY=%s\n' "$NSEC"
   printf "BUZZ_AUTH_TAG='%s'\n" "$AUTH_TAG"
 } >>"$TMP_FILE" || fail "could not write env file"

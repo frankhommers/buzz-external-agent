@@ -41,7 +41,12 @@ interface Fixture {
   envFile: string
   hostKey: string
   buzzLog: string
-  run: (overrides?: { buzzPubkey?: string; authTag?: string; sealed?: string }) => RunResult
+  run: (overrides?: {
+    buzzPubkey?: string
+    authTag?: string
+    sealed?: string
+    relay?: string
+  }) => RunResult
 }
 
 interface RunResult {
@@ -73,9 +78,8 @@ const setup = async (dir: string, withEnv: boolean): Promise<Fixture> => {
       [
         '#!/bin/sh',
         `printf '%s\\n' "$*" >> '${buzzLog}'`,
-        ...['BUZZ_PRIVATE_KEY', 'BUZZ_RELAY_URL', 'BUZZ_AUTH_TAG'].map(
-          (name) => `[ -n "$\{${name}:-}" ] || exit 1`,
-        ),
+        ...['BUZZ_RELAY_URL', 'BUZZ_AUTH_TAG'].map((name) => `[ -n "$\{${name}:-}" ] || exit 1`),
+        `[ "\${BUZZ_PRIVATE_KEY:-}" = '${nsec}' ] || exit 1`,
         `echo '[{"pubkey":"${reportedPubkey}"}]'`,
         '',
       ].join('\n'),
@@ -95,7 +99,7 @@ const setup = async (dir: string, withEnv: boolean): Promise<Fixture> => {
       '--auth-tag',
       overrides.authTag ?? authTag,
       '--relay',
-      RELAY,
+      overrides.relay ?? RELAY,
       '--env-file',
       envFile,
       '--host-key',
@@ -143,7 +147,7 @@ describe('install-agent-key.sh', () => {
       const lines = env.split('\n')
       expect(lines).toContain('# agent env')
       expect(lines).toContain('FOO=bar')
-      expect(lines).toContain(`BUZZ_RELAY_URL=${RELAY}`)
+      expect(lines).toContain(`BUZZ_RELAY_URL='${RELAY}'`)
       expect(lines).toContain(`BUZZ_PRIVATE_KEY=${f.nsec}`)
       expect(lines).toContain(`BUZZ_AUTH_TAG='${f.authTag}'`)
       for (const key of ['BUZZ_RELAY_URL', 'BUZZ_PRIVATE_KEY', 'BUZZ_AUTH_TAG']) {
@@ -210,4 +214,58 @@ describe('install-agent-key.sh', () => {
       }
       expect(readFileSync(f.buzzLog, 'utf8')).not.toContain('nsec1')
     }))
+
+  test.each([
+    ['relay with quote', { relay: "wss://a.test'x" }],
+    ['relay with newline', { relay: 'wss://a.test\nX=1' }],
+    ['relay with command substitution', { relay: 'wss://a.test/$(id)' }],
+    ['relay with backtick', { relay: 'wss://a.test/`id`' }],
+    ['relay with semicolon', { relay: 'wss://a.test/;id' }],
+    ['relay without scheme', { relay: 'https://a.test' }],
+    ['auth tag with JSON quote', { authTag: JSON.stringify(['auth', OWNER, "kind=9'x", SIG]) }],
+    [
+      'auth tag with two documents',
+      { authTag: `${JSON.stringify(['auth', OWNER, 'kind=9', SIG])}\n{}` },
+    ],
+    [
+      'auth tag with escaped quote',
+      { authTag: `["auth","${OWNER}","kind=9\\u0027;touch x;\\u0027","${SIG}"]` },
+    ],
+    ['auth tag with bad conditions', { authTag: JSON.stringify(['auth', OWNER, 'kind=09', SIG]) }],
+    [
+      'auth tag with out-of-range kind',
+      { authTag: JSON.stringify(['auth', OWNER, 'kind=65536', SIG]) },
+    ],
+    [
+      'auth tag with whitespace conditions',
+      { authTag: JSON.stringify(['auth', OWNER, 'kind=9 & kind=1', SIG]) },
+    ],
+  ])('rejects %s', (_name, overrides) =>
+    withFixture(true, (f) => {
+      const result = f.run(overrides)
+      expect(result.code).not.toBe(0)
+      expect(JSON.parse(result.stdout)).toMatchObject({ ok: false })
+      expect(readFileSync(f.envFile, 'utf8')).toBe(OLD_ENV)
+      expect(existsSync(f.sealed)).toBe(true)
+    }),
+  )
+
+  test.each([
+    ['extra line', (nsec: string) => `${nsec}\n$(id)\n`],
+    ['no trailing newline', (nsec: string) => nsec],
+    ['two trailing newlines', (nsec: string) => `${nsec}\n\n`],
+  ])('rejects decrypted plaintext with %s', (_name, craft) =>
+    withFixture(true, (f) => {
+      const crafted = join(f.dir, 'crafted.age')
+      const sealed = Bun.spawnSync(['age', '-a', '-R', `${f.hostKey}.pub`, '-o', crafted], {
+        stdin: new TextEncoder().encode(craft(f.nsec)),
+      })
+      expect(sealed.exitCode).toBe(0)
+      const result = f.run({ sealed: crafted })
+      expect(result.code).not.toBe(0)
+      expect(JSON.parse(result.stdout)).toMatchObject({ ok: false })
+      expect(readFileSync(f.envFile, 'utf8')).toBe(OLD_ENV)
+      expect(existsSync(crafted)).toBe(true)
+    }),
+  )
 })
