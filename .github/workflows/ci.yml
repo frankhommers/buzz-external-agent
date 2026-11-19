@@ -70,6 +70,25 @@ jobs:
           TAG: ${{ github.ref_name }}
           VERSION: ${{ steps.package.outputs.version }}
         run: |
+          # Notes: this version's CHANGELOG section plus install steps, not the whole file.
+          awk -v v="## $VERSION" '$0==v{on=1;next} on&&/^## /{exit} on' CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "CHANGELOG.md has no section for $VERSION" >&2
+            exit 1
+          fi
+          base="https://github.com/$GITHUB_REPOSITORY/blob/$TAG"
+          cat >> notes.md <<'NOTES'
+
+          ## Install
+
+          Requires Buzz Desktop 1.0.5 or newer.
+
+          1. Download `selfhosted-agents-@VERSION@.zip`, check it against `SHA256SUMS` and unzip it to a folder.
+          2. In Buzz: **Settings → Plugins → Manage plugins → Add → Browse**, and pick that folder.
+
+          Then follow the [owner guide](@BASE@/docs/owner-guide.md) or the [operator guide](@BASE@/docs/operator-guide.md).
+          NOTES
+          sed -i -e "s#@VERSION@#$VERSION#g" -e "s#@BASE@#$base#g" notes.md
           flags=""
           case "$VERSION" in *-*) flags="--prerelease" ;; esac
-          gh release create "$TAG" release/* --title "$TAG" --notes-file CHANGELOG.md $flags
+          gh release create "$TAG" release/* --title "Self-hosted agents $VERSION" --notes-file notes.md $flags

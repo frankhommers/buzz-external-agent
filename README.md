@@ -3,9 +3,9 @@
 A [Buzz Desktop](https://github.com/block/buzz-app) plugin that lists, creates and
 retires agents running on your own servers.
 
-> **Pre-release (0.9.0-beta.2).** The full flow (offer, create, install, retire, delete,
-> and bringing an existing agent into Buzz) was verified live on Buzz Desktop 1.0.5 (Linux)
-> against a test relay. See [Known limitations](#known-limitations).
+> **1.0.0.** Requires Buzz Desktop 1.0.5 or newer. The full flow (offer, create, install,
+> retire, delete, and bringing an existing agent into Buzz) was verified live on Buzz Desktop
+> 1.0.5 and 1.0.6 (Linux). See [Known limitations](#known-limitations).
 
 ## Who it is for
 
@@ -116,8 +116,8 @@ host name matches the slot's server label.
 
 ## Old Buzz
 
-The plugin does not support the old Buzz app. The last Go release for old Buzz is tag
-`v0.1.1` on the [releases page](https://github.com/frankhommers/buzz-external-agent/releases).
+The plugin does not support the old Buzz app (before 1.0). The earlier Go placeholder for
+old Buzz has been retired.
 
 ## Development
 
