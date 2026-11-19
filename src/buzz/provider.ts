@@ -104,6 +104,8 @@ export const createProvider = (deps: ProviderDeps): RemoteAgentType => {
         }
         const status = store.statusOf(existing.pubkey)
         if (status !== undefined && status !== 'awaiting-install') throw new Error(SLOT_IN_USE)
+        // A retry after a failed publish: the same signed profile, published again.
+        await deps.relay.publishSigned(existing.profile)
         return resultOf(existing)
       }
       if (!isValidName(name)) throw new Error(BAD_NAME)
@@ -121,8 +123,6 @@ export const createProvider = (deps: ProviderDeps): RemoteAgentType => {
           auth,
           createdAt: Math.floor(deps.now() / MS_PER_SECOND),
         })
-        await deps.relay.publishSigned(profile)
-        // The profile is public now: finish persisting so a retry reuses this key.
         const sealed = await sealSecret(secret, host)
         secret.fill(0)
         const pending: PendingSetup = {
@@ -136,7 +136,10 @@ export const createProvider = (deps: ProviderDeps): RemoteAgentType => {
           name,
           ...withPicture(picture),
         }
+        // Stored before the profile goes public, so a published key is always one we hold
+        // sealed; if publishing fails, a retry republishes this profile.
         store.putPending(pending)
+        await deps.relay.publishSigned(profile)
         return resultOf(pending)
       } finally {
         secret.fill(0)

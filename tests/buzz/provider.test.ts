@@ -74,6 +74,8 @@ const setup = (options: Options = {}) => {
     })
 
   const published: SignedEvent[] = []
+  /** Whether the agent's pending setup was already stored when its profile was published. */
+  const storedAtPublish: boolean[] = []
   const blocks: { to: string; block: Block }[] = []
   const authCalls: string[] = []
   const relay: Relay = {
@@ -82,6 +84,7 @@ const setup = (options: Options = {}) => {
     readProfile: async (pubkey) => published.find((event) => event.pubkey === pubkey),
     publishRecord: async () => {},
     publishSigned: async (event) => {
+      storedAtPublish.push(store.pending().some((p) => p.pubkey === event.pubkey))
       if (options.publishError) throw options.publishError
       published.push(event)
     },
@@ -110,6 +113,7 @@ const setup = (options: Options = {}) => {
     viewer,
     operatorHex,
     published,
+    storedAtPublish,
     blocks,
     authCalls,
   }
@@ -159,7 +163,13 @@ describe('provision', () => {
     expect(allStored(storage)).not.toMatch(/nsec1/i)
   })
 
-  test('retry with the same slot returns the same pubkey without a new key', async () => {
+  test('stores the sealed setup before publishing the profile', async () => {
+    const { provider, storedAtPublish } = setup()
+    await provider.provision(provisionInput())
+    expect(storedAtPublish).toEqual([true])
+  })
+
+  test('retry with the same slot republishes the stored profile without a new key', async () => {
     const { provider, published, authCalls } = setup()
     const first = await provider.provision(provisionInput())
     const second = await provider.provision(
@@ -168,7 +178,8 @@ describe('provision', () => {
 
     expect(second).toEqual(first)
     expect(authCalls).toHaveLength(1)
-    expect(published).toHaveLength(1)
+    expect(published).toHaveLength(2)
+    expect(published[1]).toEqual(published[0] as SignedEvent)
   })
 
   test('retry for the same slot in another community throws', async () => {
@@ -243,10 +254,30 @@ describe('provision', () => {
     expect(store.pending()).toHaveLength(0)
   })
 
-  test('does not persist a pending setup when publishing the profile fails', async () => {
-    const { provider, store } = setup({ publishError: new Error('relay refused') })
+  test('keeps the sealed setup when publishing fails; a retry republishes it', async () => {
+    const options: Options = { publishError: new Error('relay refused') }
+    const { provider, store, published, authCalls } = setup(options)
     await expect(provider.provision(provisionInput())).rejects.toThrow('relay refused')
-    expect(store.pending()).toHaveLength(0)
+    const pending = store.pendingFor('vps-1')
+    expect(pending?.sealed.startsWith('-----BEGIN AGE ENCRYPTED FILE-----')).toBe(true)
+    expect(published).toHaveLength(0)
+
+    delete options.publishError
+    const result = await provider.provision(provisionInput())
+    expect(result.pubkey).toBe(pending?.pubkey ?? '')
+    expect(authCalls).toHaveLength(1)
+    expect(published).toEqual([pending?.profile as SignedEvent])
+  })
+
+  test('publishes nothing when the setup cannot be stored', async () => {
+    const { provider, storage, published } = setup()
+    const setItem = storage.setItem.bind(storage)
+    storage.setItem = (key, value) => {
+      if (key.endsWith(':pending')) throw new Error('quota exceeded')
+      setItem(key, value)
+    }
+    await expect(provider.provision(provisionInput())).rejects.toThrow('quota exceeded')
+    expect(published).toHaveLength(0)
   })
 
   test('honours an aborted signal before doing anything', async () => {
