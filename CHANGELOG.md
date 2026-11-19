@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.2
+
+- **Take over** in Bring into Buzz: an agent whose record names another runtime (for example
+  after Buzz's own **Import an agent** gave it a desktop harness) can now be brought in after
+  an explicit confirmation. Its signed profile must still name you as owner, and it is never
+  offered while its key is held in this Buzz.
+- The owner check now also applies to agents another runtime manages, and a key held in this
+  Buzz is reported before another runtime.
+- Owner guide: why not to import or Delete an agent that runs on a server.
+
 ## 1.0.1
 
 - Install from GitHub: in Buzz, add repository `frankhommers/buzz-external-agent` with branch
