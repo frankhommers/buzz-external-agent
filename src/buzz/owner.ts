@@ -1,12 +1,10 @@
 import { RUNTIME } from '../constants'
-import { decodeNpub, isHex64 } from '../core/keys'
+import { decodeNpub } from '../core/keys'
 import { type AcceptContext, acceptBlock, type RetireRequest } from '../core/messages'
-import type { AgentStatus, Store } from '../core/store'
+import { type AgentStatus, operatorPubkey, type Store } from '../core/store'
+import { createPoll } from './poll'
 import type { BlockMessage, Relay } from './relay'
 import type { AgentSummary, AgentsSnapshot } from './types'
-
-/** How often the owner's plugin reads the DM with the operator. */
-export const POLL_INTERVAL_MS = 60_000
 
 /** The retire-request slot for an agent brought into Buzz rather than set up here. */
 const ADOPTED_SLOT = 'adopted'
@@ -60,16 +58,7 @@ export interface Owner {
   subscribe(listener: () => void): () => void
 }
 
-const operatorHex = (store: Store): string | undefined => {
-  const operator = store.settings().operator?.trim()
-  if (!operator) return undefined
-  if (isHex64(operator)) return operator
-  try {
-    return decodeNpub(operator)
-  } catch {
-    return undefined
-  }
-}
+const operatorHex = (store: Store): string | undefined => operatorPubkey(store.settings())
 
 const isRetiring = (status: AgentStatus | undefined): boolean =>
   status === 'retire-requested' || status === 'retired'
@@ -133,15 +122,6 @@ export const createOwner = (deps: OwnerDeps): Owner => {
     return { store: deps.storeFor({ origin, viewer }), viewer, community }
   }
 
-  // A slow read must not overlap the next tick: callers join the poll in flight.
-  let inFlight: Promise<void> | undefined
-  const poll = (): Promise<void> => {
-    inFlight ??= readOperator().finally(() => {
-      inFlight = undefined
-    })
-    return inFlight
-  }
-
   const readOperator = async (): Promise<void> => {
     let opened: Awaited<ReturnType<typeof open>>
     try {
@@ -156,6 +136,7 @@ export const createOwner = (deps: OwnerDeps): Owner => {
     applyOperatorBlocks(store, messages, { operator, viewer, community })
     notify()
   }
+  const { poll, pollSafely } = createPoll(readOperator, 'reading operator messages')
 
   return {
     view: async () => {
@@ -195,15 +176,7 @@ export const createOwner = (deps: OwnerDeps): Owner => {
     },
 
     poll,
-
-    pollSafely: async () => {
-      try {
-        await poll()
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        console.warn(`Self-hosted agents: reading operator messages failed: ${message}`)
-      }
-    },
+    pollSafely,
 
     subscribe: (listener) => {
       listeners.add(listener)

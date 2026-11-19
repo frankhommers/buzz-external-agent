@@ -42,15 +42,16 @@ test('apply registers the self-hosted agent type once', () => {
   expect(registered[0]).toMatchObject({ id: 'agent', title: 'Self-hosted agent' })
 })
 
-test('apply registers the owner settings card', () => {
+test('apply registers the owner and operator settings cards', () => {
   const { value, cards } = pluginCtx()
   apply(value)
-  expect(cards).toHaveLength(1)
+  expect(cards).toHaveLength(2)
   expect(cards[0]).toMatchObject({ id: 'owner', title: 'Self-hosted agents' })
-  expect(typeof cards[0]?.component).toBe('function')
+  expect(cards[1]).toMatchObject({ id: 'operator', title: 'Self-hosted agents: operator' })
+  for (const card of cards) expect(typeof card.component).toBe('function')
 })
 
-test('apply owns the operator poll through one effect with a cleanup', () => {
+test('apply owns the owner and operator polls through one effect with a cleanup', () => {
   const { value, effects } = pluginCtx()
   apply(value)
   expect(effects).toHaveLength(1)

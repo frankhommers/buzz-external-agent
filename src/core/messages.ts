@@ -63,9 +63,15 @@ const isWssUrl = (value: string): boolean => {
   }
 }
 
-const isSlot: Check = (value) => isString(value) && SLOT_PATTERN.test(value)
+/** A slot id: lowercase letters, digits and dashes, starting with a letter or digit. */
+export const isSlotId = (value: string): boolean => SLOT_PATTERN.test(value)
+
+/** A server label short enough for a slot offer. */
+export const isSlotLabel = (value: string): boolean => codePoints(value) <= MAX_LABEL_LENGTH
+
+const isSlot: Check = (value) => isString(value) && isSlotId(value)
 const isPubkey: Check = (value) => isString(value) && isHex64(value)
-const isLabel: Check = (value) => isString(value) && codePoints(value) <= MAX_LABEL_LENGTH
+const isLabel: Check = (value) => isString(value) && isSlotLabel(value)
 const isName: Check = (value) =>
   isString(value) &&
   codePoints(value) >= 1 &&

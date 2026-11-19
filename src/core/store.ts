@@ -1,5 +1,6 @@
 import { STORAGE_PREFIX } from '../constants'
 import type { SignedEvent } from './events'
+import { decodeNpub, isHex64 } from './keys'
 import type { InstallRequest, RetireRequest, SlotOffer } from './messages'
 import type { HostKey } from './seal'
 
@@ -26,6 +27,18 @@ export type OperatorSlot = {
 export type AgentStatus = 'awaiting-install' | 'installed' | 'retire-requested' | 'retired'
 
 export type Settings = { operator?: string; template?: string }
+
+/** The configured operator as hex, or undefined when unset or not a valid key. */
+export const operatorPubkey = (settings: Settings): string | undefined => {
+  const operator = settings.operator?.trim()
+  if (!operator) return undefined
+  if (isHex64(operator)) return operator
+  try {
+    return decodeNpub(operator)
+  } catch {
+    return undefined
+  }
+}
 
 export interface Store {
   settings(): Settings
