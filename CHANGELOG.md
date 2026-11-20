@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.4
+
+- Plainer wording, no behaviour change. The person who runs the servers is now called the
+  **server admin** everywhere (was "operator").
+- Self-hosted agents: **Your server admin (npub)**, **Servers you can use**, and **Agents
+  already running on a server** with a **Show in Buzz** button (was "Bring into Buzz").
+- Agent servers: **Give someone a server for their agent** with **Short name**, **Name they
+  see** and **Who gets it (npub)**; **Agents to install**, **Agents to stop**, and **People
+  whose agents you already run** (was "Known owners").
+
 ## 1.0.3
 
 - The operator settings card is now called **Agent servers**, so it no longer looks like a

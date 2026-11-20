@@ -155,14 +155,14 @@ describe('buildOwnerView', () => {
         {
           pubkey: agentA,
           name: 'Robo',
-          status: 'Installed by the operator',
+          status: 'Installed by your server admin',
           canRetire: true,
           canCancelRetire: false,
         },
         {
           pubkey: agentB,
           name: 'Old',
-          status: 'Stopped by the operator — you can delete it now',
+          status: 'Stopped by your server admin — you can delete it now',
           canRetire: false,
           canCancelRetire: false,
         },
@@ -179,7 +179,7 @@ describe('buildOwnerView', () => {
     expect(row()).toMatchObject({ status: 'Waiting for installation', canRetire: true })
     store.setStatus(agentA, 'retire-requested')
     expect(row()).toMatchObject({
-      status: 'Waiting for the operator',
+      status: 'Waiting for your server admin',
       canRetire: false,
       canCancelRetire: true,
     })
@@ -257,8 +257,8 @@ describe('createOwner', () => {
     [undefined, 'Unknown — set up outside this device', true],
     ['awaiting-install', 'Waiting for installation', true],
     ['installed', 'Installed', true],
-    ['retire-requested', 'Retirement requested — waiting for the operator', false],
-    ['retired', 'Stopped by the operator — you can delete it now', false],
+    ['retire-requested', 'Retirement requested — waiting for your server admin', false],
+    ['retired', 'Stopped by your server admin — you can delete it now', false],
   ] as const)('agentStatus of %p reads %p', async (status, text, canRetire) => {
     const fake = setup()
     if (status !== undefined) fake.store.setStatus(agentA, status)
@@ -390,7 +390,7 @@ describe('createOwner', () => {
 
   test('retire refuses without operator, when already retiring, or for other agents', async () => {
     const noOperator = setup()
-    await expect(noOperator.owner.retire(agentA)).rejects.toThrow(/operator/)
+    await expect(noOperator.owner.retire(agentA)).rejects.toThrow(/server admin/)
     const retiring = setup()
     retiring.store.setSettings({ operator: encodeNpub(operator) })
     retiring.store.setStatus(agentA, 'retire-requested')

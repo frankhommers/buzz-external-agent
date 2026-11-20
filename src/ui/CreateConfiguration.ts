@@ -4,7 +4,7 @@ import type { CreateConfigurationProps } from '../buzz/types'
 import type { ReactLike } from './OwnerCard'
 import { ERROR, HINT, ROW, SECTION, TEXT } from './styles'
 
-export const NO_OFFERS_TEXT = 'No server is ready for you yet. Ask your operator.'
+export const NO_OFFERS_TEXT = 'No server is ready for you yet. Ask your server admin.'
 const LOADING_TEXT = 'Looking for your servers…'
 const ERROR_TEXT = 'Could not read your servers: '
 

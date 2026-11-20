@@ -110,7 +110,7 @@ test('lists slots with their state, requests with handoff actions, and retire re
     'Installed',
     'Three',
     'Retired',
-    'Offer',
+    'Give',
     'Import',
   ])
     expect(out).toContain(text)
@@ -119,7 +119,7 @@ test('lists slots with their state, requests with handoff actions, and retire re
 test('lists known owners and adopted retire requests with a Retired button', () => {
   const retired: string[] = []
   const out = html(OperatorPanel(react, props()))
-  expect(out).toContain('Known owners')
+  expect(out).toContain('People whose agents you already run')
   expect(out).toContain('npub1known')
   expect(out).toContain('Existing agent Old agent — owner npub1owner')
   const tree = OperatorPanel(

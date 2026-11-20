@@ -193,9 +193,9 @@ describe('operator card', () => {
 
   test('the add-server fields carry visible labels, the owner npub a whole row', () => {
     const labels = findAll(tree, (n) => n.type === 'label')
-    for (const text of ['Slot id', 'Server label', 'Owner npub', 'SSH host public key'])
+    for (const text of ['Short name', 'Name they see', 'Who gets it (npub)', 'SSH host public key'])
       expect(labels.some((label) => textOf(label).startsWith(text))).toBe(true)
-    const owner = labels.find((label) => textOf(label).startsWith('Owner npub'))
+    const owner = labels.find((label) => textOf(label).startsWith('Who gets it (npub)'))
     expect(styleOf(owner)?.flex).toBe('1 1 100%')
   })
 
@@ -205,7 +205,7 @@ describe('operator card', () => {
 
   test('the servers table has a header row and keeps short words whole', () => {
     const headers = findAll(tree, (n) => n.type === 'th')
-    expect(headers.map(textOf)).toEqual(['Server', 'Slot', 'Host key', 'Owner', 'State', ''])
+    expect(headers.map(textOf)).toEqual(['Server', 'Short name', 'Host key', 'For', 'State', ''])
     for (const header of headers) expect(styleOf(header)?.whiteSpace).toBe('nowrap')
     const cells = findAll(tree, (n) => n.type === 'td')
     const cell = (text: string) => cells.find((c) => textOf(c) === text)
@@ -216,7 +216,7 @@ describe('operator card', () => {
   })
 
   test('the open slot owner input is wide enough for a full npub', () => {
-    const input = findAll(tree, (n) => n.props?.['aria-label'] === 'Owner npub for vps-2')[0]
+    const input = findAll(tree, (n) => n.props?.['aria-label'] === 'Who gets vps-2 (npub)')[0]
     expect(input).toBeDefined()
     if (input !== undefined) expectBorderedField(input)
     // A full 63-character npub fits: monospaced caption text in a cell of at least 32rem.
@@ -329,7 +329,7 @@ describe('owner card', () => {
   test('the operator npub input is labelled, bordered and has a whole row', () => {
     const tree = card()
     const label = findAll(tree, (n) => n.type === 'label')[0]
-    expect(textOf(label)).toContain('Operator npub')
+    expect(textOf(label)).toContain('Server admin (npub)')
     expect(styleOf(label)?.flex).toBe('1 1 100%')
     const input = findAll(tree, (n) => n.type === 'input')[0]
     expect(input).toBeDefined()
@@ -346,10 +346,10 @@ describe('owner card', () => {
       undefined,
       '',
       undefined,
-      { text: 'Enter the operator as an npub', error: true },
+      { text: 'Enter your server admin as an npub', error: true },
     ])
     const alert = findAll(tree, (n) => n.props?.role === 'alert')[0]
-    expect(textOf(alert)).toBe('Enter the operator as an npub')
+    expect(textOf(alert)).toBe('Enter your server admin as an npub')
     expect(styleOf(alert)?.color).toBe('var(--text-danger)')
   })
 
@@ -438,14 +438,14 @@ describe('create picker and status tab', () => {
     const tree = StatusView(treeReact(), {
       status: { text: 'Installed', canRetire: true, canCancelRetire: false },
       busy: false,
-      notice: 'Set the operator first',
+      notice: 'Set your server admin first',
       onRetire: noop,
       onCancelRetire: noop,
     })
     expect(styleOf(tree as Node)?.padding).toBe('var(--space-panel-inset)')
     expectHostButtons(tree)
     const alert = findAll(tree, (n) => n.props?.role === 'alert')[0]
-    expect(textOf(alert)).toBe('Set the operator first')
+    expect(textOf(alert)).toBe('Set your server admin first')
     expect(styleOf(alert)?.color).toBe('var(--text-danger)')
   })
 })

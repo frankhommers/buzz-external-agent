@@ -41,7 +41,7 @@ export interface OwnerCardDeps {
 }
 
 export const ADOPT_STATE_TEXT: Record<AdoptState, string> = {
-  ready: 'Can be brought into Buzz',
+  ready: 'Can be shown in Buzz',
   'unverified-owner': 'Cannot verify owner',
   'local-key': 'Its key is held in this Buzz',
   'other-runtime': 'Managed by another runtime',
@@ -134,12 +134,12 @@ export const ownerCard = (deps: OwnerCardDeps) =>
     const operatorSection = h(
       'div',
       { style: SECTION },
-      heading('Operator'),
-      hint('The Buzz account that runs your servers. Paste their npub.'),
+      heading('Your server admin'),
+      hint('The person who runs the servers your agents live on. Paste their npub.'),
       h(
         'label',
         { style: WIDE_FIELD },
-        h('span', { style: LABEL }, 'Operator npub'),
+        h('span', { style: LABEL }, 'Server admin (npub)'),
         h('input', {
           type: 'text',
           value: operatorValue,
@@ -156,7 +156,7 @@ export const ownerCard = (deps: OwnerCardDeps) =>
           run(async () => {
             await owner.saveOperator(operatorValue)
             setOperatorDraft(undefined)
-            return 'Operator saved.'
+            return 'Server admin saved.'
           }),
         ),
       ),
@@ -166,9 +166,9 @@ export const ownerCard = (deps: OwnerCardDeps) =>
     const offersSection = h(
       'div',
       { style: SECTION },
-      heading('Servers offered to you'),
+      heading('Servers you can use'),
       offers.length === 0
-        ? hint('No servers offered yet.')
+        ? hint('None yet.')
         : h(
             'ul',
             { style: LIST },
@@ -185,7 +185,7 @@ export const ownerCard = (deps: OwnerCardDeps) =>
         button('Check now', () =>
           run(async () => {
             await owner.poll()
-            return 'Checked for messages from the operator.'
+            return 'Checked for messages from your server admin.'
           }),
         ),
       ),
@@ -209,7 +209,7 @@ export const ownerCard = (deps: OwnerCardDeps) =>
                   ? button('Retire', () =>
                       run(async () => {
                         await owner.retire(agent.pubkey)
-                        return 'Asked the operator to retire the agent.'
+                        return 'Asked your server admin to retire the agent.'
                       }),
                     )
                   : null,
@@ -253,7 +253,7 @@ export const ownerCard = (deps: OwnerCardDeps) =>
                     return item(
                       adoptable.pubkey,
                       `${label} — ${ADOPT_STATE_TEXT.ready}`,
-                      button('Bring into Buzz', () => bringIn({})),
+                      button('Show in Buzz', () => bringIn({})),
                     )
                   if (adoptable.state !== 'other-runtime')
                     return item(adoptable.pubkey, `${label} — ${ADOPT_STATE_TEXT[adoptable.state]}`)
@@ -275,7 +275,7 @@ export const ownerCard = (deps: OwnerCardDeps) =>
     const adoptSection = h(
       'div',
       { style: SECTION },
-      heading('Bring into Buzz'),
+      heading('Agents already running on a server'),
       hint('Agents you already run elsewhere and own can be listed here as hosted.'),
       adoptList,
       h('div', { style: ROW }, button('Refresh', loadAdoptables)),

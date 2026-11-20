@@ -1,15 +1,14 @@
-# Operator guide
+# Server admin guide
 
 You run the servers; owners ask for agents. Give owners your npub.
 
-Paste your own npub as Operator in Settings → Self-hosted agents to get the operator view.
-It is Settings → **Agent servers**, listed only while you are the operator
-set for the selected community.
+Paste your own npub as **Your server admin** in Settings → Self-hosted agents. Settings then
+also lists **Agent servers**, only while you are the server admin set for the selected
+community.
 
-## Offer a server
+## Give someone a server for their agent
 
-Provision the server with your own tools first. Then under **Offer a server** enter a slot
-id (lowercase letters, digits and dashes; `adopted` is reserved), a label, the owner's npub
+Provision the server with your own tools first. Then under **Give someone a server for their agent** enter a short name (lowercase letters, digits and dashes; `adopted` is reserved), a label, the owner's npub
 and the server's SSH host public key (`ssh-ed25519 AAAA...`), then click Offer. A list of
 servers can be imported as JSON, `[{"slot": "server-1", "label": "Server 1", "hostKey":
 "ssh-ed25519 AAAA..."}]`, and offered one by one.
@@ -20,7 +19,7 @@ single agent.
 
 ## Install
 
-Under **Install requests**, per request:
+Under **Agents to install**, per request:
 
 1. Download the `.age` file (`<slot>.age`).
 2. **Copy public data** (name, host, pubkey, auth tag) or **Copy command** when a template
@@ -48,16 +47,16 @@ An unknown placeholder is shown as an error on the request instead of a command.
 
 ## Retire
 
-Under **Retire requests**, stop the agent on its server, then click **Retired**; the owner
+Under **Agents to stop**, stop the agent on its server, then click **Retired**; the owner
 can then delete the agent in Buzz.
 
 An owner's **Cancel retire request** only cancels on their device; the request stays listed
 here. Check with the owner before acting on a request they may have taken back.
 
-## Existing agents and Known owners
+## People whose agents you already run
 
 Owners can bring agents you already run into Buzz and later retire them. Those retire requests
-have no slot, so list the owners' npubs under **Known owners** (one per line) and save; their
+have no slot, so list the owners' npubs under **People whose agents you already run** (one per line) and save; their
 DMs are then read. A request is accepted only when the agent's signed profile names that owner.
 
 ## If you are also an owner
