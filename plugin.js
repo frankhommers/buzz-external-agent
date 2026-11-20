@@ -9962,23 +9962,23 @@ var operatorCardVisibility = (deps) => ({
 });
 
 // src/buzz/owner.ts
-var NO_OPERATOR = "Set the operator first";
-var BAD_OPERATOR = "Enter the operator as an npub";
+var NO_OPERATOR = "Set your server admin first";
+var BAD_OPERATOR = "Enter your server admin as an npub";
 var NOT_RETIRABLE = "This agent cannot be retired from here";
 var NO_RETIRE_REQUEST = "There is no retire request to cancel";
 var STATUS_TEXT = {
   none: "Hosted on your server",
   "awaiting-install": "Waiting for installation",
-  installed: "Installed by the operator",
-  "retire-requested": "Waiting for the operator",
-  retired: "Stopped by the operator — you can delete it now"
+  installed: "Installed by your server admin",
+  "retire-requested": "Waiting for your server admin",
+  retired: "Stopped by your server admin — you can delete it now"
 };
 var TAB_STATUS_TEXT = {
   none: "Unknown — set up outside this device",
   "awaiting-install": "Waiting for installation",
   installed: "Installed",
-  "retire-requested": "Retirement requested — waiting for the operator",
-  retired: "Stopped by the operator — you can delete it now"
+  "retire-requested": "Retirement requested — waiting for your server admin",
+  retired: "Stopped by your server admin — you can delete it now"
 };
 var operatorHex = (store) => operatorPubkey(store.settings());
 var isRetiring = (status) => status === "retire-requested" || status === "retired";
@@ -10664,7 +10664,7 @@ var NO_NOTICE = { text: "", error: false };
 var noticeProps = (notice) => notice.error ? { role: "alert", style: ERROR } : { role: "status", style: STATUS };
 
 // src/ui/CreateConfiguration.ts
-var NO_OFFERS_TEXT = "No server is ready for you yet. Ask your operator.";
+var NO_OFFERS_TEXT = "No server is ready for you yet. Ask your server admin.";
 var LOADING_TEXT = "Looking for your servers…";
 var ERROR_TEXT = "Could not read your servers: ";
 var OfferList = (react, props) => {
@@ -10743,24 +10743,24 @@ var OperatorPanel = (react, props) => {
   const actions = (...children) => h("div", { style: ROW }, ...children);
   const heading = (text) => h("h3", { style: HEADING }, text);
   const hint = (text) => h("p", { style: HINT }, text);
-  const slotsTable = h("div", { style: TABLE_WRAP }, h("table", { style: TABLE }, h("thead", null, h("tr", null, ...["Server", "Slot", "Host key", "Owner", "State", ""].map((title) => h("th", { key: title, style: TH }, title)))), h("tbody", null, ...view.slots.map((slot) => h("tr", { key: slot.slot }, h("td", { style: TD }, slot.label), h("td", { style: TD }, slot.slot), h("td", { style: TD_KEY }, slot.fingerprint), slot.state === "open" ? h("td", { style: TD_OWNER_INPUT }, input(`offer.${slot.slot}`, "npub1…", {
-    "aria-label": `Owner npub for ${slot.slot}`,
+  const slotsTable = h("div", { style: TABLE_WRAP }, h("table", { style: TABLE }, h("thead", null, h("tr", null, ...["Server", "Short name", "Host key", "For", "State", ""].map((title) => h("th", { key: title, style: TH }, title)))), h("tbody", null, ...view.slots.map((slot) => h("tr", { key: slot.slot }, h("td", { style: TD }, slot.label), h("td", { style: TD }, slot.slot), h("td", { style: TD_KEY }, slot.fingerprint), slot.state === "open" ? h("td", { style: TD_OWNER_INPUT }, input(`offer.${slot.slot}`, "npub1…", {
+    "aria-label": `Who gets ${slot.slot} (npub)`,
     style: OWNER_INPUT
-  })) : h("td", { style: TD_KEY }, slot.owner), h("td", { style: TD }, slot.state), h("td", { style: TD }, slot.state === "open" ? button("Offer", () => props.onOfferOpen(slot.slot, draft(`offer.${slot.slot}`))) : null))))));
+  })) : h("td", { style: TD_KEY }, slot.owner), h("td", { style: TD }, slot.state), h("td", { style: TD }, slot.state === "open" ? button("Give", () => props.onOfferOpen(slot.slot, draft(`offer.${slot.slot}`))) : null))))));
   const slotsSection = h("div", { style: SECTION }, heading("Servers"), view.slots.length === 0 ? hint("No servers yet. Add one below or import a list.") : slotsTable, actions(button("Check now", props.onCheck)));
-  const addSection = h("div", { style: SECTION }, heading("Offer a server"), hint("Take the host key from your provisioning tool, or from ssh-keyscan checked against a " + "known fingerprint. Only ssh-ed25519 keys are accepted."), h("div", { style: FIELD_ROW }, field("add.slot", "Slot id", "vps-1"), field("add.label", "Server label", "My server"), field("add.owner", "Owner npub", "npub1…", true), area("add.hostKey", "SSH host public key", "ssh-ed25519 AAAA…")), actions(button("Offer", () => props.onOffer({
+  const addSection = h("div", { style: SECTION }, heading("Give someone a server for their agent"), hint("Take the host key from your provisioning tool, or from ssh-keyscan checked against a " + "known fingerprint. Only ssh-ed25519 keys are accepted."), h("div", { style: FIELD_ROW }, field("add.slot", "Short name", "blackborow"), field("add.label", "Name they see", "Blackborow"), field("add.owner", "Who gets it (npub)", "npub1…", true), area("add.hostKey", "SSH host public key", "ssh-ed25519 AAAA…")), actions(button("Give", () => props.onOffer({
     slot: draft("add.slot"),
     label: draft("add.label"),
     hostKeyText: draft("add.hostKey"),
     owner: draft("add.owner")
   }))));
   const importSection = h("div", { style: SECTION }, heading("Import servers"), hint('A JSON list of {"slot", "label", "hostKey"}; offer each one above.'), area("import", "Servers as JSON", '[{"slot": "vps-1", "label": "…", "hostKey": "ssh-ed25519 …"}]'), actions(button("Import", () => props.onImport(draft("import")))));
-  const installsSection = h("div", { style: SECTION }, heading("Install requests"), view.installs.length === 0 ? hint("No open install requests.") : h("ul", { style: LIST }, ...view.installs.map((install) => h("li", { key: install.pubkey, style: LIST_ITEM }, h("p", { style: { ...TEXT, overflowWrap: "anywhere" } }, `${install.name} on ${install.label} (${install.slot}) for ${install.owner}`), actions(button(`Download ${install.handoff.filename}`, () => props.onDownload(install.handoff)), button("Copy public data", () => props.onCopy(install.handoff.publicJson, "Public data")), install.handoff.command === undefined ? null : button("Copy command", () => props.onCopy(install.handoff.command ?? "", "Command")), button("Installed", () => props.onConfirm("installed", install.id))), install.handoff.command === undefined ? null : h("pre", { style: PRE }, install.handoff.command), install.commandError === undefined ? null : h("p", { role: "alert", style: ERROR }, `Command template: ${install.commandError}`)))));
+  const installsSection = h("div", { style: SECTION }, heading("Agents to install"), view.installs.length === 0 ? hint("Nothing to install.") : h("ul", { style: LIST }, ...view.installs.map((install) => h("li", { key: install.pubkey, style: LIST_ITEM }, h("p", { style: { ...TEXT, overflowWrap: "anywhere" } }, `${install.name} on ${install.label} (${install.slot}) for ${install.owner}`), actions(button(`Download ${install.handoff.filename}`, () => props.onDownload(install.handoff)), button("Copy public data", () => props.onCopy(install.handoff.publicJson, "Public data")), install.handoff.command === undefined ? null : button("Copy command", () => props.onCopy(install.handoff.command ?? "", "Command")), button("Installed", () => props.onConfirm("installed", install.id))), install.handoff.command === undefined ? null : h("pre", { style: PRE }, install.handoff.command), install.commandError === undefined ? null : h("p", { role: "alert", style: ERROR }, `Command template: ${install.commandError}`)))));
   const retireRow = (id, text) => h("li", { key: `${id.slot}:${id.pubkey}`, style: LIST_ROW }, h("span", { style: ROW_TEXT }, text), button("Retired", () => props.onConfirm("retired", id)));
   const noRetires = view.retires.length === 0 && view.adopted.length === 0;
-  const retiresSection = h("div", { style: SECTION }, heading("Retire requests"), noRetires ? hint("No open retire requests.") : h("ul", { style: LIST }, ...view.retires.map((retire) => retireRow(retire.id, `Agent ${retire.pubkey.slice(0, 8)} on ${retire.label} (${retire.slot}) for ${retire.owner}`)), ...view.adopted.map((retire) => retireRow(retire.id, `Existing agent ${retire.name} — owner ${retire.owner}`))));
-  const ownersSection = h("div", { style: SECTION }, heading("Known owners"), hint("Owners whose existing agents you run. Their messages are read even without a server " + "offered here, so they can ask you to retire an agent. One npub per line."), area("owners", "Known owners", "npub1…", view.owners.join(`
-`)), actions(button("Save owners", () => props.onSaveOwners(draft("owners", view.owners.join(`
+  const retiresSection = h("div", { style: SECTION }, heading("Agents to stop"), noRetires ? hint("Nothing to stop.") : h("ul", { style: LIST }, ...view.retires.map((retire) => retireRow(retire.id, `Agent ${retire.pubkey.slice(0, 8)} on ${retire.label} (${retire.slot}) for ${retire.owner}`)), ...view.adopted.map((retire) => retireRow(retire.id, `Existing agent ${retire.name} — owner ${retire.owner}`))));
+  const ownersSection = h("div", { style: SECTION }, heading("People whose agents you already run"), hint("Their messages are read even without a server given to them here, so they can ask you " + "to stop an agent. One npub per line."), area("owners", "People whose agents you already run", "npub1…", view.owners.join(`
+`)), actions(button("Save", () => props.onSaveOwners(draft("owners", view.owners.join(`
 `))))));
   const templateSection = h("div", { style: SECTION }, heading("Command template"), hint(TEMPLATE_HELP), area("template", "Command template", "./deploy-agent {host} {file} {pubkey}", view.template), actions(button("Save template", () => props.onSaveTemplate(draft("template", view.template)))));
   return h("section", { className: "ui-card", style: CARD }, props.notice.text === "" ? null : h("p", noticeProps(props.notice), props.notice.text), slotsSection, addSection, importSection, installsSection, retiresSection, ownersSection, templateSection);
@@ -10829,12 +10829,12 @@ var operatorCard = (deps) => function OperatorCard(props) {
     onOffer: (input) => run(async () => {
       await operator.offer(input);
       clearDrafts("add.slot", "add.label", "add.hostKey", "add.owner");
-      return `Offered ${input.slot} to the owner.`;
+      return `Gave ${input.slot} to them.`;
     }),
     onOfferOpen: (slot, owner) => run(async () => {
       await operator.offerOpen(slot, owner);
       clearDrafts(`offer.${slot}`);
-      return `Offered ${slot} to the owner.`;
+      return `Gave ${slot} to them.`;
     }),
     onImport: (text) => run(async () => {
       const count = await operator.importSlots(text);
@@ -10945,7 +10945,7 @@ var adopt = async (relay, pubkey, options = {}) => {
 
 // src/ui/OwnerCard.ts
 var ADOPT_STATE_TEXT = {
-  ready: "Can be brought into Buzz",
+  ready: "Can be shown in Buzz",
   "unverified-owner": "Cannot verify owner",
   "local-key": "Its key is held in this Buzz",
   "other-runtime": "Managed by another runtime",
@@ -11014,7 +11014,7 @@ var ownerCard = (deps) => function OwnerCard(props) {
   const hint = (text) => h("p", { style: HINT }, text);
   const item = (key, text, ...actions) => h("li", { key, style: LIST_ROW }, h("span", { style: ROW_TEXT }, text), ...actions);
   const operatorValue = operatorDraft ?? view?.operator ?? "";
-  const operatorSection = h("div", { style: SECTION }, heading("Operator"), hint("The Buzz account that runs your servers. Paste their npub."), h("label", { style: WIDE_FIELD }, h("span", { style: LABEL }, "Operator npub"), h("input", {
+  const operatorSection = h("div", { style: SECTION }, heading("Your server admin"), hint("The person who runs the servers your agents live on. Paste their npub."), h("label", { style: WIDE_FIELD }, h("span", { style: LABEL }, "Server admin (npub)"), h("input", {
     type: "text",
     value: operatorValue,
     placeholder: "npub1…",
@@ -11024,17 +11024,17 @@ var ownerCard = (deps) => function OwnerCard(props) {
   })), h("div", { style: ROW }, button("Save", () => run(async () => {
     await owner.saveOperator(operatorValue);
     setOperatorDraft(undefined);
-    return "Operator saved.";
+    return "Server admin saved.";
   }))));
   const offers = view?.offers ?? [];
-  const offersSection = h("div", { style: SECTION }, heading("Servers offered to you"), offers.length === 0 ? hint("No servers offered yet.") : h("ul", { style: LIST }, ...offers.map((offer) => item(offer.slot, `${offer.label} (${offer.slot}) — use it in New agent → Self-hosted agent.`))), h("div", { style: ROW }, button("Check now", () => run(async () => {
+  const offersSection = h("div", { style: SECTION }, heading("Servers you can use"), offers.length === 0 ? hint("None yet.") : h("ul", { style: LIST }, ...offers.map((offer) => item(offer.slot, `${offer.label} (${offer.slot}) — use it in New agent → Self-hosted agent.`))), h("div", { style: ROW }, button("Check now", () => run(async () => {
     await owner.poll();
-    return "Checked for messages from the operator.";
+    return "Checked for messages from your server admin.";
   }))));
   const agents = view?.agents ?? [];
   const agentsSection = h("div", { style: SECTION }, heading("Your self-hosted agents"), agents.length === 0 ? hint("None in this community.") : h("ul", { style: LIST }, ...agents.map((agent) => item(agent.pubkey, `${agent.name || shortNpub(agent.pubkey)} — ${agent.status}`, agent.canRetire ? button("Retire", () => run(async () => {
     await owner.retire(agent.pubkey);
-    return "Asked the operator to retire the agent.";
+    return "Asked your server admin to retire the agent.";
   })) : null, agent.canCancelRetire ? button("Cancel retire request", () => run(async () => {
     await owner.cancelRetire(agent.pubkey);
     return "Retire request cancelled.";
@@ -11048,13 +11048,13 @@ var ownerCard = (deps) => function OwnerCard(props) {
       return ADOPTED_NOTICE;
     });
     if (adoptable.state === "ready")
-      return item(adoptable.pubkey, `${label} — ${ADOPT_STATE_TEXT.ready}`, button("Bring into Buzz", () => bringIn({})));
+      return item(adoptable.pubkey, `${label} — ${ADOPT_STATE_TEXT.ready}`, button("Show in Buzz", () => bringIn({})));
     if (adoptable.state !== "other-runtime")
       return item(adoptable.pubkey, `${label} — ${ADOPT_STATE_TEXT[adoptable.state]}`);
     const managed = `${label} — Managed by ${adoptable.runtime ?? "another runtime"}`;
     return takeOver === adoptable.pubkey ? item(adoptable.pubkey, `${managed}. ${TAKE_OVER_WARNING}`, button("Confirm take over", () => bringIn({ takeOver: true })), button("Cancel", () => setTakeOver(undefined))) : item(adoptable.pubkey, managed, button("Take over", () => setTakeOver(adoptable.pubkey)));
   }));
-  const adoptSection = h("div", { style: SECTION }, heading("Bring into Buzz"), hint("Agents you already run elsewhere and own can be listed here as hosted."), adoptList, h("div", { style: ROW }, button("Refresh", loadAdoptables)));
+  const adoptSection = h("div", { style: SECTION }, heading("Agents already running on a server"), hint("Agents you already run elsewhere and own can be listed here as hosted."), adoptList, h("div", { style: ROW }, button("Refresh", loadAdoptables)));
   return h("section", { className: "ui-card", style: CARD }, viewError === "" ? null : h("p", { role: "alert", style: ERROR }, viewError), notice.text === "" ? null : h("p", noticeProps(notice), notice.text), operatorSection, offersSection, agentsSection, adoptSection);
 };
 
