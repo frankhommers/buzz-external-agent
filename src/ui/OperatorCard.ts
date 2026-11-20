@@ -115,7 +115,7 @@ export const OperatorPanel = (react: ReactLike, props: OperatorPanelProps): unkn
         h(
           'tr',
           null,
-          ...['Server', 'Slot', 'Host key', 'Owner', 'State', ''].map((title) =>
+          ...['Server', 'Short name', 'Host key', 'For', 'State', ''].map((title) =>
             h('th', { key: title, style: TH }, title),
           ),
         ),
@@ -135,7 +135,7 @@ export const OperatorPanel = (react: ReactLike, props: OperatorPanelProps): unkn
                   'td',
                   { style: TD_OWNER_INPUT },
                   input(`offer.${slot.slot}`, 'npub1…', {
-                    'aria-label': `Owner npub for ${slot.slot}`,
+                    'aria-label': `Who gets ${slot.slot} (npub)`,
                     style: OWNER_INPUT,
                   }),
                 )
@@ -145,7 +145,7 @@ export const OperatorPanel = (react: ReactLike, props: OperatorPanelProps): unkn
               'td',
               { style: TD },
               slot.state === 'open'
-                ? button('Offer', () => props.onOfferOpen(slot.slot, draft(`offer.${slot.slot}`)))
+                ? button('Give', () => props.onOfferOpen(slot.slot, draft(`offer.${slot.slot}`)))
                 : null,
             ),
           ),
@@ -165,7 +165,7 @@ export const OperatorPanel = (react: ReactLike, props: OperatorPanelProps): unkn
   const addSection = h(
     'div',
     { style: SECTION },
-    heading('Offer a server'),
+    heading('Give someone a server for their agent'),
     hint(
       'Take the host key from your provisioning tool, or from ssh-keyscan checked against a ' +
         'known fingerprint. Only ssh-ed25519 keys are accepted.',
@@ -173,13 +173,13 @@ export const OperatorPanel = (react: ReactLike, props: OperatorPanelProps): unkn
     h(
       'div',
       { style: FIELD_ROW },
-      field('add.slot', 'Slot id', 'vps-1'),
-      field('add.label', 'Server label', 'My server'),
-      field('add.owner', 'Owner npub', 'npub1…', true),
+      field('add.slot', 'Short name', 'blackborow'),
+      field('add.label', 'Name they see', 'Blackborow'),
+      field('add.owner', 'Who gets it (npub)', 'npub1…', true),
       area('add.hostKey', 'SSH host public key', 'ssh-ed25519 AAAA…'),
     ),
     actions(
-      button('Offer', () =>
+      button('Give', () =>
         props.onOffer({
           slot: draft('add.slot'),
           label: draft('add.label'),
@@ -206,9 +206,9 @@ export const OperatorPanel = (react: ReactLike, props: OperatorPanelProps): unkn
   const installsSection = h(
     'div',
     { style: SECTION },
-    heading('Install requests'),
+    heading('Agents to install'),
     view.installs.length === 0
-      ? hint('No open install requests.')
+      ? hint('Nothing to install.')
       : h(
           'ul',
           { style: LIST },
@@ -261,9 +261,9 @@ export const OperatorPanel = (react: ReactLike, props: OperatorPanelProps): unkn
   const retiresSection = h(
     'div',
     { style: SECTION },
-    heading('Retire requests'),
+    heading('Agents to stop'),
     noRetires
-      ? hint('No open retire requests.')
+      ? hint('Nothing to stop.')
       : h(
           'ul',
           { style: LIST },
@@ -282,15 +282,13 @@ export const OperatorPanel = (react: ReactLike, props: OperatorPanelProps): unkn
   const ownersSection = h(
     'div',
     { style: SECTION },
-    heading('Known owners'),
+    heading('People whose agents you already run'),
     hint(
-      'Owners whose existing agents you run. Their messages are read even without a server ' +
-        'offered here, so they can ask you to retire an agent. One npub per line.',
+      'Their messages are read even without a server given to them here, so they can ask you ' +
+        'to stop an agent. One npub per line.',
     ),
-    area('owners', 'Known owners', 'npub1…', view.owners.join('\n')),
-    actions(
-      button('Save owners', () => props.onSaveOwners(draft('owners', view.owners.join('\n')))),
-    ),
+    area('owners', 'People whose agents you already run', 'npub1…', view.owners.join('\n')),
+    actions(button('Save', () => props.onSaveOwners(draft('owners', view.owners.join('\n'))))),
   )
 
   const templateSection = h(
@@ -413,13 +411,13 @@ export const operatorCard = (deps: OperatorCardDeps) =>
         run(async () => {
           await operator.offer(input)
           clearDrafts('add.slot', 'add.label', 'add.hostKey', 'add.owner')
-          return `Offered ${input.slot} to the owner.`
+          return `Gave ${input.slot} to them.`
         }),
       onOfferOpen: (slot, owner) =>
         run(async () => {
           await operator.offerOpen(slot, owner)
           clearDrafts(`offer.${slot}`)
-          return `Offered ${slot} to the owner.`
+          return `Gave ${slot} to them.`
         }),
       onImport: (text) =>
         run(async () => {

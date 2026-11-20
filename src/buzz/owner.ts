@@ -7,17 +7,17 @@ import { createPoll } from './poll'
 import type { BlockMessage, Relay } from './relay'
 import type { AgentSummary, AgentsSnapshot } from './types'
 
-const NO_OPERATOR = 'Set the operator first'
-const BAD_OPERATOR = 'Enter the operator as an npub'
+const NO_OPERATOR = 'Set your server admin first'
+const BAD_OPERATOR = 'Enter your server admin as an npub'
 const NOT_RETIRABLE = 'This agent cannot be retired from here'
 const NO_RETIRE_REQUEST = 'There is no retire request to cancel'
 
 const STATUS_TEXT: Record<AgentStatus | 'none', string> = {
   none: 'Hosted on your server',
   'awaiting-install': 'Waiting for installation',
-  installed: 'Installed by the operator',
-  'retire-requested': 'Waiting for the operator',
-  retired: 'Stopped by the operator — you can delete it now',
+  installed: 'Installed by your server admin',
+  'retire-requested': 'Waiting for your server admin',
+  retired: 'Stopped by your server admin — you can delete it now',
 }
 
 /** The wording on an agent's own Server tab. */
@@ -25,8 +25,8 @@ const TAB_STATUS_TEXT: Record<AgentStatus | 'none', string> = {
   none: 'Unknown — set up outside this device',
   'awaiting-install': 'Waiting for installation',
   installed: 'Installed',
-  'retire-requested': 'Retirement requested — waiting for the operator',
-  retired: 'Stopped by the operator — you can delete it now',
+  'retire-requested': 'Retirement requested — waiting for your server admin',
+  retired: 'Stopped by your server admin — you can delete it now',
 }
 
 export type AgentStatusView = { text: string; canRetire: boolean; canCancelRetire: boolean }

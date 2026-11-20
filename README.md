@@ -11,8 +11,8 @@ retires agents running on your own servers.
 
 - **Owners**: Buzz users who want agents that run on a server instead of their desktop.
   Owners need no deployment knowledge.
-- **Operators**: the one person who provisions and maintains the servers with their own
-  own tools. The plugin hands the operator what they need.
+- **Server admin**: the one person who provisions and maintains the servers with their
+  own tools. The plugin hands the server admin what they need.
 
 Any agent that reads `BUZZ_PRIVATE_KEY` and `BUZZ_AUTH_TAG` (and `BUZZ_RELAY_URL`) from
 its environment can be used. The plugin never contacts a server itself.
@@ -39,25 +39,25 @@ Or build it: `bun install && bun run build`, then add `dist/plugin`.
 
 ## Roles and flows
 
-- **Setup**: the owner opens Settings → Self-hosted agents and pastes the operator's npub.
-  The operator pastes their own npub as Operator in Settings → Self-hosted agents to get the
-  operator view, Settings → **Agent servers** (listed only for the operator).
-- **Offer**: the operator adds a server (slot id, label, SSH host public key) and offers
-  it to an owner. The owner sees it under "Servers offered to you".
+- **Setup**: the owner opens Settings → Self-hosted agents and pastes the server admin's npub.
+  The server admin pastes their own npub as **Your server admin** in Settings → Self-hosted agents; Settings
+  then also lists **Agent servers** (only for the server admin).
+- **Offer**: the server admin adds a server (short name, name they see, SSH host public key) and gives
+  it to an owner. The owner sees it under "Servers you can use".
 - **Create** (owner): New agent, type **Self-hosted agent**, choose an offered server. The
   plugin generates the key in memory, gets the owner proof from Buzz, seals the key to the
   server's host key, publishes the agent profile signed by the agent over the plugin's own
-  connection (signed in as the agent, NIP-42) and sends an install request to the operator.
-- **Install** (operator): download the `.age` file, copy the public data or the rendered
-  command, deploy, then click **Installed**. See [the operator guide](docs/operator-guide.md).
-- **Bring into Buzz** (owner): an agent you already run elsewhere is listed as hosted
+  connection (signed in as the agent, NIP-42) and sends an install request to the server admin.
+- **Install** (server admin): download the `.age` file, copy the public data or the rendered
+  command, deploy, then click **Installed**. See [the server admin guide](docs/operator-guide.md).
+- **Agents already running on a server** (owner): an agent you already run elsewhere is listed as hosted
   again, keeping its key. It appears after Buzz reconnects or restarts. An agent another
   runtime manages (for example after Buzz's own import) can be taken over, once its key is
   not held in this Buzz.
-- **Retire and delete** (owner): Retire asks the operator to stop the agent; once they
+- **Retire and delete** (owner): Retire asks the server admin to stop the agent; once they
   confirm, delete it. See [the owner guide](docs/owner-guide.md).
 
-When the operator is also an owner, offers, requests and confirmations are handled locally;
+When the server admin is also an owner, offers, requests and confirmations are handled locally;
 no message is sent to yourself.
 
 ## Security model
@@ -65,17 +65,17 @@ no message is sent to yourself.
 - The agent's secret key exists in plaintext only in memory on the owner's desktop while it
   is created. It is then encrypted with `age` to the target server's SSH ed25519 host key
   (other recipient types are rejected) and only that ciphertext is stored or sent.
-- Only the holder of the host private key, the target server, can decrypt it. The operator,
+- Only the holder of the host private key, the target server, can decrypt it. The server admin,
   the relay and Buzz cannot.
 - Buzz DMs are **not end-to-end encrypted**. They carry public data and age ciphertext only.
-- **Host-key verification is the operator's job.** Take the key from your provisioning tool,
+- **Host-key verification is the server admin's job.** Take the key from your provisioning tool,
   or from `ssh-keyscan` checked against a fingerprint you already trust. A wrong host key
   means the key is sealed to the wrong machine.
 - Install requests are accepted only when the agent's own signed profile names the
   requesting owner. A server can hold only one agent.
 - Retire requests for adopted agents are accepted only when the agent's signed profile names
-  the requesting owner; the operator keeps a "Known owners" list so those DMs are read.
-- The operator command template shell-quotes every value.
+  the requesting owner; the server admin keeps a "People whose agents you already run" list so those DMs are read.
+- The server admin command template shell-quotes every value.
 
 ## Known limitations
 
@@ -83,14 +83,14 @@ no message is sent to yourself.
   platforms are untested.
 - No rename or avatar change from Buzz; change them on the server.
 - **Retire before Delete.** Buzz archives an agent before it asks the plugin to remove it.
-  Delete only succeeds after the operator confirmed retirement, with the agent's community
+  Delete only succeeds after the server admin confirmed retirement, with the agent's community
   selected in Buzz. The one exception: an unfinished setup made on this device whose install
   request was never sent can be deleted directly. Once sending was attempted, even if it
   failed, the agent must be retired first; agents brought into Buzz or set up on another
   device too.
 - If Delete is refused right after Retired while Buzz is reconnecting, try Delete again.
 - **Cancel retire request** only cancels on this device. The request already sent stays with
-  the operator, who may still act on it and stop the agent.
+  the server admin, who may still act on it and stop the agent.
 - Hosted agents always appear online in Buzz. Use the **Server** tab for the real status.
 - No remote start or stop.
 - A plugin added as a folder (zip) does not update itself: delete it and add the new version.
@@ -112,14 +112,14 @@ It prints `{"ok":true,...}` or `{"ok":false,"error":"..."}`.
 
 ## Example: command template
 
-The operator can set a command template that turns each install request into a ready-to-run
+The server admin can set a command template that turns each install request into a ready-to-run
 command for whatever tooling they use, for example
 
 ```text
 ./deploy-agent {host} {file} {pubkey} {auth_tag}
 ```
 
-where `deploy-agent` is the operator's own script: it copies the `.age` file to the server,
+where `deploy-agent` is the server admin's own script: it copies the `.age` file to the server,
 runs `install-agent-key.sh` with `--host-key /etc/ssh/ssh_host_ed25519_key`, and restarts the
 agent service.
 

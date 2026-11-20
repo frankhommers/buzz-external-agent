@@ -17,8 +17,8 @@ const html = (element: unknown): string => renderToStaticMarkup(element as React
 
 test('with no offers the picker says to ask the operator', () => {
   const out = html(OfferList(react, { offers: [], slot: '', disabled: false, onChoose: () => {} }))
-  expect(out).toContain('No server is ready for you yet. Ask your operator.')
-  expect(NO_OFFERS_TEXT).toBe('No server is ready for you yet. Ask your operator.')
+  expect(out).toContain('No server is ready for you yet. Ask your server admin.')
+  expect(NO_OFFERS_TEXT).toBe('No server is ready for you yet. Ask your server admin.')
   expect(out).not.toContain('radio')
 })
 
@@ -176,8 +176,8 @@ const agent = (pubkey: string): Agent =>
 test.each([
   ['Waiting for installation', true, false],
   ['Installed', true, false],
-  ['Retirement requested — waiting for the operator', false, true],
-  ['Stopped by the operator — you can delete it now', false, false],
+  ['Retirement requested — waiting for your server admin', false, true],
+  ['Stopped by your server admin — you can delete it now', false, false],
   ['Unknown — set up outside this device', true, false],
 ])('status view shows %s, retire hidden when retiring', (text, canRetire, canCancelRetire) => {
   const out = html(

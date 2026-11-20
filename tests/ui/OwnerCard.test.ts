@@ -42,10 +42,10 @@ test('renders a host card with the owner sections and no side effects during ren
   expect(tree.props).toMatchObject({ className: 'ui-card' })
   const text = textOf(tree)
   for (const heading of [
-    'Operator',
-    'Servers offered to you',
+    'Your server admin',
+    'Servers you can use',
     'Your self-hosted agents',
-    'Bring into Buzz',
+    'Agents already running on a server',
   ])
     expect(text).toContain(heading)
   expect(effects).toHaveLength(2)
@@ -60,7 +60,7 @@ test('a retire-requested agent offers Cancel retire request, which calls the own
       {
         pubkey: 'd'.repeat(64),
         name: 'Robo',
-        status: 'Waiting for the operator',
+        status: 'Waiting for your server admin',
         canRetire: false,
         canCancelRetire: true,
       },
@@ -155,7 +155,7 @@ test('an agent another runtime manages shows that runtime and a Take over button
     { [TAKE_OVER]: (v) => picked.push(v) },
   )
   expect(text).toContain('Shackleton — Managed by buzz.goose/goose')
-  expect(buttons.some((b) => b.children.includes('Bring into Buzz'))).toBe(false)
+  expect(buttons.some((b) => b.children.includes('Show in Buzz'))).toBe(false)
   const take = buttons.find((b) => b.children.includes('Take over'))
   const onClick = take?.props?.onClick
   if (typeof onClick !== 'function') throw new Error('no Take over button')
